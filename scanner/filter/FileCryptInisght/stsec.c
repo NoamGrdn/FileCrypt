@@ -1,7 +1,9 @@
 ﻿#include "stsec.h"
+#include <intrin.h>
 #include <wdm.h>
 #include <bcrypt.h>
 
+#include "kappx.h"
 #include "rtlString.h"
 
 VOID
@@ -523,7 +525,7 @@ StSecpAddChamberProfileKey(
                 ExReleaseFastMutex(&g_StSecKeyMutex);
 
                 /* If cache exceeds cleanup trigger size, queue background cleanup */
-                if ((_g_CacheCleanupTriggerSize < numberOfCacheEntries) && (/*LOCK(), */g_WorkItemQueued == 0))
+                if ((_g_CacheCleanupTriggerSize < numberOfCacheEntries) && (/* TODO LOCK(), */g_WorkItemQueued == 0))
                 {
                     g_WorkItemQueued = 1;
                     return_status = FltQueueGenericWorkItem(
@@ -1534,26 +1536,23 @@ StSecpGetFolderPropertyPolicy(
     HANDLE RegistryKeyHandle
 )
 {
-    code* pcVar1;
     BOOLEAN createStrSuccess;
     NTSTATUS registryStatus;
     NTSTATUS status;
     NTSTATUS return_status;
-    ulonglong uVar2;
+    //ulonglong uVar2;
     KEY_VALUE_PARTIAL_INFORMATION* chamberIdKeyInfo;
     PWCHAR chamberIdData;
     KEY_NAME_INFORMATION* keyNameInformation = NULL;
     PCUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY newCacheEntry;
     PCUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY cacheHead;
-    undefined* puVar3;
-    undefined* puVar4;
-    undefined* puVar5;
-    undefined* puVar6;
-    KEY_VALUE_PARTIAL_INFORMATION* pKVar7 = NULL;
-    KEY_VALUE_PARTIAL_INFORMATION* pKVar8 = NULL;
+    //undefined* puVar3;
+    //undefined* puVar4;
+    //undefined* puVar5;
+    //undefined* puVar6;
+    //KEY_VALUE_PARTIAL_INFORMATION* pKVar7 = NULL;
     ULONG subkeyIndex = 0;
-    undefined auStackY_328[8];
-    undefined auStackY_320[24];
+    //undefined auStackY_328[8];
     ULONG regResultLength = 0;
     UNICODE_STRING path = {0, 0, NULL};
     HANDLE innerKeyHandle;
@@ -1614,8 +1613,8 @@ StSecpGetFolderPropertyPolicy(
         subkeyIndex = subkeyIndex + 1;
     }
     //subkeyIndex = (KEY_VALUE_PARTIAL_INFORMATION*)keyNameInformation;
-    chamberIdData = (PWCHAR)keyNameInformation;
-    chamberIdKeyInfo = (KEY_VALUE_PARTIAL_INFORMATION*)keyNameInformation;
+    //chamberIdData = (PWCHAR)keyNameInformation;
+    //chamberIdKeyInfo = (KEY_VALUE_PARTIAL_INFORMATION*)keyNameInformation;
 
     if (registryStatus == STATUS_NO_MORE_ENTRIES)
     {
@@ -1630,8 +1629,9 @@ StSecpGetFolderPropertyPolicy(
         );
 
         //subkeyIndex = pKVar7;
-        chamberIdData = (PWCHAR)pKVar8;
+        chamberIdData = NULL;
         chamberIdKeyInfo = NULL;
+
         if (registryStatus < 0)
         {
             if (registryStatus != STATUS_OBJECT_NAME_NOT_FOUND)
@@ -1739,10 +1739,10 @@ StSecpGetFolderPropertyPolicy(
 
                                 keyNameInformation->Name[keyNameInformation->NameLength >> 1] = L'\\';
                                 keyNameInformation->Name[(ulonglong)(keyNameInformation->NameLength >> 1) + 1] = L'\0';
-                                
+
                                 //createStrSuccess = RtlCreateUnicodeString(&path, &keyNameInformation[0x11].field_0x6);
                                 createStrSuccess = RtlCreateUnicodeString(&path, keyNameInformation->Name);
-                                
+
                                 newCacheEntry = ExAllocatePool2(0x100, 0x30, POOL_TAG_STsp);
 
                                 if (createStrSuccess != '\0' && newCacheEntry != NULL)
@@ -1760,19 +1760,21 @@ StSecpGetFolderPropertyPolicy(
 
                                     if (g_StSecFolderPropertyCacheListTail->Next != g_StSecFolderPropertyCacheListHead)
                                     {
-                                        cacheHead = (CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY*)0x3;
-                                        pcVar1 = (code*)swi(0x29);
-                                        newCacheEntry = (CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY*)(*pcVar1)();
-                                        puVar3 = auStackY_320;
+                                        /* INT 0x29 is an interupt for __fastfail, error code 0x3 is FAST_FAIL_CORRUPT_LIST_ENTRY */
+                                        // cacheHead = (CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY*)0x3;
+                                        // pcVar1 = (code*)swi(0x29);
+                                        __fastfail(0x3);
+                                        // newCacheEntry = (CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY*)(*pcVar1)();
+                                        // puVar3 = auStackY_320;
                                     }
-                                    
+
                                     newCacheEntry->Next = cacheHead;
                                     newCacheEntry->Prev = g_StSecFolderPropertyCacheListTail;
-                                    gfasdfStSecFolderPropertyCacheListTail->Next = newCacheEntry;
-                                    *(undefined8*)(puVar3 + 0x40) = 0;
-                                    puVar4 = puVar3;
+                                    g_StSecFolderPropertyCacheListTail->Next = newCacheEntry;
+                                    //*(undefined8*)(puVar3 + 0x40) = 0;
+                                    //puVar4 = puVar3;
                                     g_StSecFolderPropertyCacheListTail = newCacheEntry;
-                                    goto LAB_1c0012538;
+                                    goto StSecpGetFolderPropertyPolicy_free_keyValueName;
                                 }
                             }
                         }
@@ -1780,10 +1782,11 @@ StSecpGetFolderPropertyPolicy(
                         //subkeyIndex = (KEY_VALUE_PARTIAL_INFORMATION*)keyNameInformation;
                         goto StSecpGetFolderPropertyPolicy_free_chamberid_data;
                     }
-                LAB_1c0012538:
-                    *(undefined8*)(puVar4 + -8) = 0x1c0012544;
-                    RtlFreeUnicodeString((PUNICODE_STRING)(puVar4 + 0x38));
-                    puVar5 = puVar4;
+                StSecpGetFolderPropertyPolicy_free_keyValueName:
+                    //*(undefined8*)(puVar4 + -8) = 0x1c0012544;
+                    //RtlFreeUnicodeString((PUNICODE_STRING)(puVar4 + 0x38));
+                    RtlFreeUnicodeString(&keyValueName);
+                    //puVar5 = puVar4;
                     goto StSecpGetFolderPropertyPolicy_free_registry_key_info;
                 }
             }
@@ -1802,27 +1805,269 @@ StSecpGetFolderPropertyPolicy(
             ExFreePoolWithTag(chamberIdData, POOL_TAG_STsp);
             //keyNameInformation = (KEY_NAME_INFORMATION*)subkeyIndex;
         }
-        puVar6 = auStackY_328;
+        //puVar6 = auStackY_328;
         if (chamberIdKeyInfo != NULL)
         {
         StSecpGetFolderPropertyPolicy_free_registry_key_info:
-            *(undefined8*)(puVar5 + -8) = 0x1c0012599;
+            //*(undefined8*)(puVar5 + -8) = 0x1c0012599;
             ExFreePoolWithTag(chamberIdKeyInfo, POOL_TAG_STsp);
-            puVar6 = puVar5;
+            //puVar6 = puVar5;
         }
         if ((KEY_VALUE_PARTIAL_INFORMATION*)keyNameInformation != NULL)
         {
-            *(undefined8*)(puVar6 + -8) = 0x1c00125b2;
+            //*(undefined8*)(puVar6 + -8) = 0x1c00125b2;
             ExFreePoolWithTag(keyNameInformation, POOL_TAG_STsp);
         }
     }
-    
-    if (*(HANDLE*)(puVar6 + 0x48) != NULL)
+
+    // if (*(HANDLE*)(puVar6 + 0x48) != NULL)
+    // {
+    //     *(undefined8*)(puVar6 + -8) = 0x1c00125c8;
+    //     ZwClose(*(HANDLE*)(puVar6 + 0x48));
+    // }
+    // *(undefined8*)(puVar6 + -8) = 0x1c00125de;
+    if (RegistryKeyHandle != NULL)
     {
-        *(undefined8*)(puVar6 + -8) = 0x1c00125c8;
-        ZwClose(*(HANDLE*)(puVar6 + 0x48));
+        ZwClose(RegistryKeyHandle);
     }
-    *(undefined8*)(puVar6 + -8) = 0x1c00125de;
 
     return return_status;
+}
+
+
+NTSTATUS
+StSecpGetMasterKey(
+    PUCHAR* OutMasterKey,
+    PULONG OutMasterKeySizeInBytes
+)
+{
+    NTSTATUS return_status;
+    NTSTATUS sealKeyStatus;
+    PUCHAR unsealedMasterKey = NULL;
+    PUCHAR* sealedKeyBuffer;
+    PUCHAR* unsealedKey = OutMasterKey;
+    PUCHAR UnsealedKey;
+    ULONG keySizeInBytes;
+    bool isMasterKeyNull;
+    ULONG sealedKeyBlobSize = 0;
+    ULONG unsealedMasterKeySizeInBytes = 0x80;
+    PUCHAR* sealedKeyBlob = NULL;
+
+    /* Check if master key is already available in memory */
+    if (g_MasterKey == NULL)
+    {
+        /* 1024-bit buffer - 128 byte key */
+        unsealedMasterKey = ExAllocatePool2(0x40, 0x80, POOL_TAG_StSn);
+        if (unsealedMasterKey == NULL)
+        {
+            return STATUS_NO_MEMORY;
+        }
+
+        return_status = StSecpReadSealedKeyBlob((PUCHAR*)&sealedKeyBlob, &sealedKeyBlobSize);
+        sealedKeyBuffer = sealedKeyBlob;
+        if (return_status < 0)
+        {
+            /* 0x80 = 128 */
+            keySizeInBytes = 0x80;
+
+            /* We have failed to read sealed key - check if it's because the key doesn't exist */
+            if (return_status == STATUS_OBJECT_NAME_NOT_FOUND)
+            {
+                return_status = BCryptGenRandom(NULL, unsealedMasterKey, 0x80, 2);
+                sealedKeyBuffer = sealedKeyBlob;
+
+                if (-1 < return_status)
+                {
+                    goto StSecpGetMasterKey_store_masterkey;
+                }
+            }
+        }
+        else
+        {
+            /* Successfully read sealed key - now unseal it via TPM */
+            return_status = StSecpUnsealKey(
+                (PUCHAR)sealedKeyBlob,
+                sealedKeyBlobSize,
+                unsealedMasterKey,
+                &unsealedMasterKeySizeInBytes
+            );
+
+            keySizeInBytes = unsealedMasterKeySizeInBytes;
+
+            if (-1 < return_status)
+            {
+                g_MasterKeyPersisted = '\x01';
+            StSecpGetMasterKey_store_masterkey:
+                // TODO LOCK();
+                isMasterKeyNull = g_MasterKey == NULL;
+                g_MasterKey = (PUCHAR)(
+                    (ulonglong)g_MasterKey ^
+                    (ulonglong)isMasterKeyNull *
+                    ((ulonglong)g_MasterKey ^ (ulonglong)unsealedMasterKey)
+                );
+
+                unsealedKey = (PUCHAR*)-(ulonglong)((ulonglong)!isMasterKeyNull * (longlong)g_MasterKey != 0);
+                unsealedMasterKey = (PUCHAR)((ulonglong)unsealedMasterKey & (ulonglong)unsealedKey);
+
+                goto LAB_1c000dbf3;
+            }
+        }
+    }
+    else
+    {
+    LAB_1c000dbf3:
+        sealedKeyBuffer = sealedKeyBlob;
+        keySizeInBytes = unsealedMasterKeySizeInBytes;
+        /* Key not yet persisted - need to save it */
+        if (g_MasterKeyPersisted == '\0')
+        {
+            /* Seal the key using TPM */
+            sealKeyStatus = StSecpSealKey(
+                (PUCHAR)unsealedKey,
+                unsealedMasterKeySizeInBytes,
+                (PUCHAR)sealedKeyBlob,
+                &sealedKeyBlobSize
+            );
+
+            if (sealKeyStatus == STATUS_BUFFER_TOO_SMALL)
+            {
+                UnsealedKey = (PUCHAR)0x100;
+                sealedKeyBuffer = ExAllocatePool2(0x100, sealedKeyBlobSize, POOL_TAG_STsp);
+
+                if (sealedKeyBuffer == NULL)
+                {
+                    return_status = STATUS_NO_MEMORY;
+                }
+                else
+                {
+                    /* Seal the key with larger buffer */
+                    return_status = StSecpSealKey(
+                        UnsealedKey,
+                        keySizeInBytes,
+                        (PUCHAR)sealedKeyBuffer,
+                        &sealedKeyBlobSize
+                    );
+
+                    /* Write the sealed key to registry */
+                    if (-1 < return_status)
+                    {
+                        return_status = StSecpWriteSealedKeyBlob(sealedKeyBuffer, sealedKeyBlobSize);
+                        if (-1 < return_status)
+                        {
+                            g_MasterKeyPersisted = '\x01';
+                            goto StSecpGetMasterKey_assign_masterkey;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                return_status = STATUS_UNSUCCESSFUL;
+            }
+        }
+        else
+        {
+        StSecpGetMasterKey_assign_masterkey:
+            return_status = STATUS_SUCCESS;
+            *OutMasterKey = g_MasterKey;
+            *OutMasterKeySizeInBytes = keySizeInBytes;
+        }
+        if (unsealedMasterKey == NULL)
+        {
+            goto StSecpGetMasterKey_cleanup_and_return;
+        }
+    }
+    StSecpFreeNonPaged(unsealedMasterKey, keySizeInBytes);
+StSecpGetMasterKey_cleanup_and_return:
+    if (sealedKeyBuffer != NULL)
+    {
+        StSecFree(sealedKeyBuffer);
+    }
+    return return_status;
+}
+
+/* This function handles the conversion of different types of identifiers into Security Identifiers
+ * (SIDs), which are then used for access control decisions */
+NTSTATUS
+StSecpGetParameterValue(
+    PCUNICODE_STRING ParameterName,
+    PCUNICODE_STRING Value,
+    PWCHAR* ResultSid
+)
+{
+    LONG cmpResult;
+    NTSTATUS status;
+    PWCHAR result = NULL;
+    UNICODE_STRING user = {0x0c, 0xe0, L"<User>"};
+    UNICODE_STRING packageFamilyName = {0x26, 0x28, L"<PackageFamilyName>"};
+    UNICODE_STRING packageFullNameRedirected = {0x36, 0x38, L"<PackageFullNameRedirected>"};
+    UNICODE_STRING packageFullName = {0x22, 0x24, L"<PackageFullName>"};
+    UNICODE_STRING productId = {0x16, 0x18, L"<ProductId>"};
+
+    cmpResult = RtlCompareUnicodeString(ParameterName, &user, '\x01');
+
+    /* 0 means the string are equal */
+    if (cmpResult == 0)
+    {
+        /* Convert a username to a SID.
+           Example example: JohnDoe */
+        status = StSecpGetSidFromUserName(Value, &result);
+    }
+    else
+    {
+        cmpResult = RtlCompareUnicodeString(ParameterName, &packageFamilyName, '\x01');
+        if (cmpResult == 0)
+        {
+            /* Convert a Windows Store app family name to a SID.
+             * Example PackageFamilyName: PublisherName.AppName_PublisherID */
+            status = StSecpGetSidFromPackageFamilyName(Value, &result);
+        }
+        else
+        {
+            cmpResult = RtlCompareUnicodeString(ParameterName, &packageFullNameRedirected, '\x01');
+            if (cmpResult == 0)
+            {
+                /* Get a security descriptor for a redirected package.
+                 * This refers to app packages that have been redirected or virtualized.
+                 * Example: Microsoft.WindowsCalculator_11.2307.4.0_x64__8wekyb3d8bbwe\PrivateVirtualization */
+                status = KappxGetSecurityDescriptorStringForPackageFullName(Value, &result);
+            }
+            else
+            {
+                cmpResult = RtlCompareUnicodeString(ParameterName, &packageFullName, '\x01');
+                if (cmpResult == 0)
+                {
+                    /* Convert a complete app package name to a SID.
+                     * Example PackageFullName: Microsoft.WindowsCalculator_11.2307.4.0_x64__8wekyb3d8bbwe */
+                    status = StSecpGetSidFromPackageFullName(Value, &result);
+                }
+                else
+                {
+                    cmpResult = RtlCompareUnicodeString(ParameterName, &productId, '\x01');
+                    if (cmpResult != 0)
+                    {
+                        status = STATUS_UNSUCCESSFUL;
+                        goto StSecpGetParameterValue_cleanup_and_return;
+                    }
+                    /* Convert a product ID to a SID.
+                     * Example ProductId:
+                     *  - {CF8E2E00-F4B3-11E3-AC10-0800200C9A66}
+                     *  - 9WZDNCRFJ364 (Microsoft Store product ID) */
+                    status = StSecpGetSidFromProductId(Value, &result);
+                }
+            }
+        }
+    }
+    if (-1 < status)
+    {
+        *ResultSid = result;
+        return STATUS_SUCCESS;
+    }
+StSecpGetParameterValue_cleanup_and_return:
+    if (result != NULL)
+    {
+        ExFreePoolWithTag(result, 0);
+    }
+
+    return status;
 }
