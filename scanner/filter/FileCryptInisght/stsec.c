@@ -1,6 +1,7 @@
 ﻿#include "stsec.h"
 #include <intrin.h>
 #include <wdm.h>
+#include <tbs.h>
 #include <bcrypt.h>
 
 #include "kappx.h"
@@ -262,7 +263,7 @@ StSecGetSecurityDescriptor(
             if ((status == 0) || (status = _wcsicmp(policyElement->ChamberId, L"<ProductId>"), status == 0))
             {
                 /* Handle PackageFamilyName or ProductId parameter */
-                paramName.Buffer = ExAllocatePool2(0x100, (ulonglong)componentName.Length + 2, 0x70537453);
+                paramName.Buffer = ExAllocatePool2(0x100, (ulonglong)componentName.Length + 2, POOL_TAG_STsp);
                 if (paramName.Buffer == NULL)
                 {
                     return_status = STATUS_NO_MEMORY;
@@ -1356,7 +1357,7 @@ StSecpFreeNonPaged(
 
 /* Generates a Security Identifier (SID) from an input string - ProductId or PackageFamilyName.
  * Uses cryptographic hashing to ensure that the same input always produces the same SID. */
-VOID
+NTSTATUS
 StSecpGetAppSid(
     PUNICODE_STRING Data,
     PWCHAR* ResultStringSid
@@ -1457,6 +1458,8 @@ StSecpGetAppSid(
     {
         ExFreePoolWithTag(hashOutputBuffer,POOL_TAG_STsp);
     }
+
+    return STATUS_SUCCESS;
 }
 
 
@@ -1663,7 +1666,7 @@ StSecpGetFolderPropertyPolicy(
                         goto StSecpGetFolderPropertyPolicy_cleanup_and_return;
                     }
 
-                    chamberIdKeyInfo = ExAllocatePool2(0x100, regResultLength, 0x70537453);
+                    chamberIdKeyInfo = ExAllocatePool2(0x100, regResultLength, POOL_TAG_STsp);
                     if (chamberIdKeyInfo == NULL)
                     {
                         goto StSecpGetFolderPropertyPolicy_free_cache_entry_string;
@@ -1718,7 +1721,7 @@ StSecpGetFolderPropertyPolicy(
                             keyNameInformation = ExAllocatePool2(
                                 0x100,
                                 (ulonglong)regResultLength + 4,
-                                0x70537453
+                                POOL_TAG_STsp
                             );
 
                             if (keyNameInformation != NULL)
@@ -2070,4 +2073,1547 @@ StSecpGetParameterValue_cleanup_and_return:
     }
 
     return status;
+}
+
+
+/* Reads from the registry and populates the StSecSecurityDescriptorCacheList with new entries */
+NTSTATUS StSecpGetSecurityDescriptorPolicy(HANDLE RegistryKeyHandle)
+
+{
+    // code* pcVar1;
+    // PWCHAR pWVar2;
+    BOOLEAN createSuccess;
+    NTSTATUS status;
+    PWCHAR parameterKeyName;
+    NTSTATUS status1;
+    KEY_VALUE_PARTIAL_INFORMATION* keyValuePartialInfo2;
+    PWCHAR securityDescriptor;
+    PWCHAR debugValue;
+    NTSTATUS return_status;
+    KEY_NAME_INFORMATION* keyNameInfo2;
+    PCUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY newCacheEntry;
+    // PVOID pKVar4 = NULL;
+    PCUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY cacheListHead;
+    // undefined* puVar3;
+    // undefined* stackPtr;
+    // PVOID pKVar7 = NULL;
+    // PVOID pKVar8 = NULL;
+    // PVOID pKVar9 = NULL;
+    // PVOID pKVar11 = NULL;
+    // undefined auStackY_328[8];
+    // undefined auStackY_320[24];
+    ULONG keyInfoLength = 0;
+    UNICODE_STRING pathString = {0, 0, NULL};
+    HANDLE registryKeyHandle = NULL;
+    ULONG subkeyIndex = 0;
+    UNICODE_STRING keyBasicInfoName = {0, 0, NULL};
+    UNICODE_STRING registryValueName = {0x24, 0x26, L"SecurityDescriptor"};
+    OBJECT_ATTRIBUTES objectAttributes;
+    KEY_NAME_INFORMATION keyNameInfo;
+    KEY_VALUE_PARTIAL_INFORMATION keyValuePartialInfo = {0, 0, 0, {0}};
+    KEY_BASIC_INFORMATION keyBasicInfo;
+
+    /* The registry path of the handle is:
+     * L"\\Registry\\Machine\\System\\ControlSet001\\Control\\StSec\\SecurityDescriptors"
+     */
+
+    // puVar3 = auStackY_328;
+    // stackPtr = auStackY_328;
+    // keyNameInfo = (KEY_NAME_INFORMATION)0x0;
+    // objectAttributes._0_16_ = ZEXT816(0);
+    // objectAttributes._16_16_ = ZEXT816(0);
+    // parameterKeyName = (PWCHAR)pKVar4;
+
+    while (status = ZwEnumerateKey(
+        RegistryKeyHandle,
+        subkeyIndex,
+        KeyBasicInformation,
+        &keyBasicInfo,
+        0x222,
+        &keyInfoLength
+    ), -1 < status)
+    {
+        //keyBasicInfoName = (UNICODE_STRING)CONCAT88(keyBasicInfo.Name, keyBasicInfoName._0_8_);
+        keyBasicInfoName.Buffer = keyBasicInfo.Name;
+
+        /* Process special subkeys that start with < and end with > */
+        if ((keyBasicInfo.Name[0] == L'<') &&
+            (keyBasicInfo.Name[(ulonglong)((ushort)keyBasicInfo.NameLength >> 1) - 1] == L'>'))
+        {
+            if (parameterKeyName == NULL)
+            {
+                /* Special handling for parameter keys (<PackageFamilyName>, etc.) */
+                parameterKeyName = ExAllocatePool2(
+                    0x100,
+                    (ulonglong)(ushort)keyBasicInfo.NameLength + 2,
+                    POOL_TAG_STsp
+                );
+
+                if (parameterKeyName == NULL)
+                {
+                    RtlFreeUnicodeString(&pathString);
+                    goto StSecpGetSecurityDescriptorPolicy_free_handle;
+                }
+                status1 = RtlStringCbCopyNW(
+                    parameterKeyName,
+                    (ulonglong)keyBasicInfoName.Length + 2,
+                    keyBasicInfoName.Buffer,
+                    keyBasicInfoName.Length
+                );
+
+                if (-1 < status1)
+                {
+                    goto StSecpGetSecurityDescriptorPolicy_next_subkey;
+                }
+            }
+
+            RtlFreeUnicodeString(&pathString);
+            // stackPtr = auStackY_328;
+            goto StSecpGetSecurityDescriptorPolicy_free_keyName;
+        }
+        // objectAttributes._0_16_ = CONCAT124(objectAttributes._4_12_, 0x30);
+        // objectAttributes._0_16_ = CONCAT88(RegistryKeyHandle, objectAttributes._0_8_);
+        // objectAttributes._16_12_ = CONCAT48(0x240, &keyBasicInfoName);
+        // objectAttributes._32_16_ = ZEXT816(0);
+        InitializeObjectAttributes(
+            &objectAttributes,
+            &keyBasicInfoName,
+            0x30,
+            RegistryKeyHandle,
+            NULL
+        )
+
+        status = ZwOpenKey(
+            &registryKeyHandle,
+            0x20019,
+            &objectAttributes
+        );
+
+        if ((status < 0) || (status1 = StSecpGetSecurityDescriptorPolicy(registryKeyHandle), status1 < 0))
+        {
+            goto StSecpGetSecurityDescriptorPolicy_cleanup_and_return;
+        }
+
+        ZwClose(registryKeyHandle);
+        registryKeyHandle = NULL;
+    StSecpGetSecurityDescriptorPolicy_next_subkey:
+        subkeyIndex = subkeyIndex + 1;
+    }
+
+    // keyValuePartialInfo2 = (KEY_VALUE_PARTIAL_INFORMATION*)pKVar4;
+    // securityDescriptor = (PWCHAR)pKVar4;
+    // debugValue = (PWCHAR)pKVar4;
+    // keyNameInfo2 = (KEY_NAME_INFORMATION*)pKVar4;
+    if (status != STATUS_NO_MORE_ENTRIES)
+    {
+        goto LAB_1c0011eac;
+    }
+
+    // keyValuePartialInfo2 = (KEY_VALUE_PARTIAL_INFORMATION*)pKVar7;
+    // securityDescriptor = (PWCHAR)pKVar8;
+    // debugValue = (PWCHAR)pKVar9;
+    // keyNameInfo2 = (KEY_NAME_INFORMATION*)pKVar11;
+    if (parameterKeyName != NULL)
+    {
+        RtlInitUnicodeString(&keyBasicInfoName, parameterKeyName);
+        // objectAttributes._0_16_ = CONCAT124(objectAttributes._4_12_, 0x30);
+        // objectAttributes._0_16_ = CONCAT88(RegistryKeyHandle, objectAttributes._0_8_);
+        // objectAttributes._16_12_ = CONCAT48(0x240, &keyBasicInfoName);
+        // objectAttributes._32_16_ = ZEXT816(0);
+        InitializeObjectAttributes(
+            &objectAttributes,
+            &keyBasicInfoName,
+            0x30,
+            RegistryKeyHandle,
+            NULL
+        )
+
+        status = ZwOpenKey(&registryKeyHandle, 0x20019, &objectAttributes);
+
+        if ((status < 0) || (status1 = StSecpGetSecurityDescriptorPolicy(registryKeyHandle), status1 < 0))
+        {
+            goto LAB_1c0011eac;
+        }
+    }
+    status = ZwQueryValueKey(
+        RegistryKeyHandle,
+        &registryValueName,
+        KeyValuePartialInformation,
+        &keyValuePartialInfo,
+        0x10,
+        &keyInfoLength
+    );
+
+    if (status < 0)
+    {
+        if (status == STATUS_BUFFER_OVERFLOW)
+        {
+            keyValuePartialInfo2 = ExAllocatePool2(0x100, keyInfoLength, POOL_TAG_STsp);
+            if (keyValuePartialInfo2 != NULL)
+            {
+                status = ZwQueryValueKey(
+                    RegistryKeyHandle,
+                    &registryValueName,
+                    KeyValuePartialInformation,
+                    keyValuePartialInfo2,
+                    keyInfoLength,
+                    &keyInfoLength
+                );
+
+                if (status < 0)
+                {
+                LAB_1c0011eac:
+                    RtlFreeUnicodeString(&pathString);
+                    if (securityDescriptor != NULL)
+                    {
+                    LAB_1c0011ec2:
+                        ExFreePoolWithTag(securityDescriptor, POOL_TAG_STsp);
+                    }
+                    // puVar3 = auStackY_328;
+                    if (debugValue != NULL)
+                    {
+                        ExFreePoolWithTag(debugValue, POOL_TAG_STsp);
+                        // puVar3 = auStackY_328;
+                    }
+                LAB_1c0011eef:
+                    // stackPtr = puVar3;
+                    // pKVar4 = keyNameInfo2;
+                    if (keyValuePartialInfo2 != NULL)
+                    {
+                        goto LAB_1c0011ef4;
+                    }
+                }
+                else
+                {
+                    securityDescriptor = ExAllocatePool2(
+                        0x100,
+                        keyValuePartialInfo2->DataLength,
+                        POOL_TAG_STsp
+                    );
+
+                    if (securityDescriptor != NULL)
+                    {
+                        status1 = RtlStringCbCopyW(
+                            securityDescriptor,
+                            keyValuePartialInfo2->DataLength,
+                            keyValuePartialInfo2->Data
+                        );
+
+                        if (status1 < 0)
+                        {
+                            goto LAB_1c0011eac;
+                        }
+
+                        RtlInitUnicodeString(&registryValueName, L"Debug");
+
+                        status = ZwQueryValueKey(
+                            RegistryKeyHandle,
+                            &registryValueName,
+                            KeyValuePartialInformation,
+                            &keyValuePartialInfo,
+                            0x10,
+                            &keyInfoLength
+                        );
+
+                        // debugValue = (PWCHAR)pKVar4;
+                        // keyNameInfo2 = (KEY_NAME_INFORMATION*)pKVar4;
+                        if (-1 < status)
+                        {
+                        LAB_1c0011dd3:
+                            RtlFreeUnicodeString(&pathString);
+                            goto LAB_1c0011ec2;
+                        }
+
+                        if (status == STATUS_BUFFER_OVERFLOW)
+                        {
+                            ExFreePoolWithTag(keyValuePartialInfo2, POOL_TAG_STsp);
+                            keyValuePartialInfo2 = ExAllocatePool2(0x100, keyInfoLength, POOL_TAG_STsp);
+
+                            //keyNameInfo2 = (KEY_NAME_INFORMATION*)pKVar11;
+                            if (keyValuePartialInfo2 != NULL)
+                            {
+                                status = ZwQueryValueKey(
+                                    RegistryKeyHandle,
+                                    &registryValueName,
+                                    KeyValuePartialInformation,
+                                    keyValuePartialInfo2,
+                                    keyInfoLength,
+                                    &keyInfoLength
+                                );
+
+                                // debugValue = (PWCHAR)pKVar9;
+                                if (-1 < status)
+                                {
+                                    debugValue = ExAllocatePool2(
+                                        0x100,
+                                        keyValuePartialInfo2->DataLength,
+                                        POOL_TAG_STsp
+                                    );
+
+                                    if (debugValue == NULL)
+                                    {
+                                        goto LAB_1c0011dd3;
+                                    }
+
+                                    status1 = RtlStringCbCopyW(
+                                        debugValue,
+                                        keyValuePartialInfo2->DataLength,
+                                        keyValuePartialInfo2->Data
+                                    );
+                                    // pWVar2 = debugValue;
+
+                                    if (-1 < status1)
+                                    {
+                                        goto LAB_1c0011f8e;
+                                    }
+                                }
+                                goto LAB_1c0011eac;
+                            }
+                            goto LAB_1c0011dd3;
+                        }
+
+                        // debugValue = (PWCHAR)pKVar9;
+                        // pWVar2 = (PWCHAR)pKVar4;
+                        // keyNameInfo2 = (KEY_NAME_INFORMATION*)pKVar11;
+                        if (status != STATUS_OBJECT_NAME_NOT_FOUND)
+                        {
+                            goto LAB_1c0011eac;
+                        }
+
+                    LAB_1c0011f8e:
+                        //debugValue = pWVar2;
+
+                        status = ZwQueryKey(
+                            RegistryKeyHandle,
+                            KeyNameInformation,
+                            &keyNameInfo,
+                            8,
+                            &keyInfoLength
+                        );
+
+                        //keyNameInfo2 = (KEY_NAME_INFORMATION*)pKVar4;
+
+                        if (-1 < status)
+                        {
+                            goto LAB_1c0011dd3;
+                        }
+                        //keyNameInfo2 = (KEY_NAME_INFORMATION*)pKVar11;
+                        if (status != STATUS_BUFFER_OVERFLOW)
+                        {
+                            goto LAB_1c0011eac;
+                        }
+
+                        keyNameInfo2 = ExAllocatePool2(
+                            0x100,
+                            (ulonglong)keyInfoLength + 4,
+                            POOL_TAG_STsp
+                        );
+
+                        if (keyNameInfo2 == NULL)
+                        {
+                            goto LAB_1c0011dd3;
+                        }
+
+                        status = ZwQueryKey(
+                            RegistryKeyHandle,
+                            KeyNameInformation,
+                            keyNameInfo2,
+                            keyInfoLength,
+                            &keyInfoLength
+                        );
+
+                        if (status < 0)
+                        {
+                            goto LAB_1c0011eac;
+                        }
+
+                        keyNameInfo2->Name[keyNameInfo2->NameLength >> 1] = L'\\';
+                        keyNameInfo2->Name[(ulonglong)(keyNameInfo2->NameLength >> 1) + 1] = L'\0';
+                        createSuccess = RtlCreateUnicodeString(&pathString, keyNameInfo2[0x12].Name);
+
+                        if ((createSuccess == '\0') ||
+                            (newCacheEntry = ExAllocatePool2(
+                                    0x100,
+                                    0x30,
+                                    POOL_TAG_STsp
+                                ),
+                                newCacheEntry == NULL))
+                        {
+                            goto LAB_1c0011dd3;
+                        }
+
+                        newCacheEntry->SecurityDescriptor = securityDescriptor;
+                        cacheListHead = g_StSecSecurityDescriptorCacheListHead;
+
+                        newCacheEntry->DebugValue = debugValue;
+                        // *(undefined4*)&newCacheEntry->Path = pathString._0_4_;
+                        // *(undefined4*)&(newCacheEntry->Path).field_0x4 = pathString._4_4_;
+                        // *(undefined4*)&(newCacheEntry->Path).Buffer = pathString.Buffer._0_4_;
+                        // *(undefined4*)((longlong)&(newCacheEntry->Path).Buffer + 4) = pathString.Buffer._4_4_;
+                        newCacheEntry->Path.Length = pathString.Length;
+                        newCacheEntry->Path.MaximumLength = pathString.MaximumLength;
+                        newCacheEntry->Path.Buffer = pathString.Buffer;
+
+                        if (g_StSecSecurityDescriptorCacheListTail->Next != g_StSecSecurityDescriptorCacheListHead)
+                        {
+                            // cacheListHead = (CUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY*)0x3;
+                            // pcVar1 = (code*)swi(0x29);
+                            __fastfail(0x3);
+                            // newCacheEntry = (CUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY*)(*pcVar1)();
+                            // puVar3 = auStackY_320;
+                        }
+
+                        newCacheEntry->Next = cacheListHead;
+                        newCacheEntry->Prev = g_StSecSecurityDescriptorCacheListTail;
+                        g_StSecSecurityDescriptorCacheListTail->Next = newCacheEntry;
+                        // *(undefined8*)(puVar3 + 0x40) = 0;
+                        // *(undefined8*)(puVar3 + -8) = 0x1c00120e8;
+                        g_StSecSecurityDescriptorCacheListTail = newCacheEntry;
+                        //RtlFreeUnicodeString((PUNICODE_STRING)(puVar3 + 0x38));
+                        RtlFreeUnicodeString(&registryValueName);
+                        goto LAB_1c0011eef;
+                    }
+                    RtlFreeUnicodeString(&pathString);
+                    //puVar3 = auStackY_328;
+                LAB_1c0011ef4:
+                    //*(undefined8*)(puVar3 + -8) = 0x1c0011f03;
+                    ExFreePoolWithTag(keyValuePartialInfo2, POOL_TAG_STsp);
+                    //stackPtr = puVar3;
+                }
+                //if ((KEY_NAME_INFORMATION*)pKVar4 != NULL)
+                if (newCacheEntry != NULL)
+                {
+                    //*(undefined8*)(stackPtr + -8) = 0x1c0011f1c;
+                    ExFreePoolWithTag(newCacheEntry, POOL_TAG_STsp);
+                }
+                goto StSecpGetSecurityDescriptorPolicy_try_free_keyName;
+            }
+        }
+        else if (status != STATUS_OBJECT_NAME_NOT_FOUND)
+        {
+            goto LAB_1c0011eac;
+        }
+    }
+StSecpGetSecurityDescriptorPolicy_cleanup_and_return:
+    RtlFreeUnicodeString(&pathString);
+    //stackPtr = auStackY_328;
+StSecpGetSecurityDescriptorPolicy_try_free_keyName:
+    if (parameterKeyName != NULL)
+    {
+    StSecpGetSecurityDescriptorPolicy_free_keyName:
+        //*(undefined8*)(stackPtr + -8) = 0x1c0011f35;
+        ExFreePoolWithTag(parameterKeyName, POOL_TAG_STsp);
+    }
+StSecpGetSecurityDescriptorPolicy_free_handle:
+    // if (*(HANDLE*)(stackPtr + 0x48) != NULL)
+    // {
+    //     *(undefined8*)(stackPtr + -8) = 0x1c0011f4b;
+    //     ZwClose(*(HANDLE*)(stackPtr + 0x48));
+    // }
+    // *(undefined8*)(stackPtr + -8) = 0x1c0011f61;
+    if (RegistryKeyHandle != NULL)
+    {
+        ZwClose(RegistryKeyHandle);
+    }
+
+    return return_status;
+}
+
+
+NTSTATUS
+StSecpGetSidFromPackageFamilyName(
+    PCUNICODE_STRING PackageFamilyName,
+    PWCHAR* ResultSid
+)
+{
+    NTSTATUS return_status;
+    UNICODE_STRING lowerCasePackageFamilyName = {0, 0, NULL};
+
+    /* Attempt to look up the PackageFamilyName in the registry */
+    return_status = KappxGetPackageSidFromPackageFamilyNameInRegistry(PackageFamilyName, ResultSid);
+
+    /* If the registry lookup fails with STATUS_OBJECT_NAME_NOT_FOUND, Convert the package family name
+       to lowercase and derive a SID algorithmically */
+    if (return_status == STATUS_OBJECT_NAME_NOT_FOUND)
+    {
+        return_status = RtlDowncaseUnicodeString(&lowerCasePackageFamilyName, PackageFamilyName, '\x01');
+
+        if (-1 < return_status)
+        {
+            return_status = StSecpGetAppSid(&lowerCasePackageFamilyName, ResultSid);
+        }
+    }
+
+    RtlFreeUnicodeString(&lowerCasePackageFamilyName);
+
+    return return_status;
+}
+
+
+NTSTATUS
+StSecpGetSidFromPackageFullName(
+    PUNICODE_STRING PackgeFullName,
+    PWCHAR* ResultSid
+)
+{
+    NTSTATUS return_status;
+    UNICODE_STRING packgeFamilyName = {0, 0, NULL};
+
+    /* StSecpGetSidFromPackageFullName extracts family name from full name
+       StSecpGetSidFromPackageFamilyName tries registry lookup for SID and falls back to StSecpGetAppSid
+       for algorithmic generation if needed */
+    return_status = StSecpPackageFamilyNameFromFullName(PackgeFullName, &packgeFamilyName);
+
+    if (-1 < return_status)
+    {
+        return_status = StSecpGetSidFromPackageFamilyName(&packgeFamilyName, ResultSid);
+    }
+
+    StSecFree(packgeFamilyName.Buffer);
+
+    return return_status;
+}
+
+
+NTSTATUS
+StSecpGetSidFromProductId(
+    PCUNICODE_STRING ProductId,
+    PWCHAR* ResultSid
+)
+{
+    NTSTATUS return_status;
+    UNICODE_STRING upcaseProduceId = {0, 0, NULL};
+
+    return_status = RtlUpcaseUnicodeString(&upcaseProduceId, ProductId, '\x01');
+
+    if (-1 < return_status)
+    {
+        return_status = StSecpGetAppSid(&upcaseProduceId, ResultSid);
+    }
+
+    RtlFreeUnicodeString(&upcaseProduceId);
+
+    return return_status;
+}
+
+
+NTSTATUS StSecpGetSidFromUserName(PCUNICODE_STRING UserName, PWCHAR* ResultSid)
+
+{
+    NTSTATUS return_status;
+    PWCHAR sid;
+    SIZE_T sidSize = UserName->Length + 2;
+    undefined8 unused = 0x6e537453;
+
+    /* This function doesn't actually convert the username to a SID as its name suggests. Instead, it
+       simply copies the UserName into the ResultSid */
+    sid = ExAllocatePool2(0x40, sidSize, 0x6e537453);
+
+    if (sid == NULL)
+    {
+        return_status = STATUS_NO_MEMORY;
+    }
+    else
+    {
+        if (sidSize >> 1 == 0)
+        {
+            return_status = STATUS_INVALID_PARAMETER;
+        }
+        else
+        {
+            return_status = RtlStringCopyWorkerW(
+                sid, sidSize >> 1,
+                unused,
+                UserName->Buffer,
+                UserName->Length >> 1
+            );
+
+            if (-1 < return_status)
+            {
+                *ResultSid = sid;
+
+                return return_status;
+            }
+        }
+        ExFreePoolWithTag(sid, 0);
+    }
+
+    return return_status;
+}
+
+
+/* Retrieves and processes a security descriptor string for a given folder path. When the driver
+   needs to make security decisions about file access, this function:
+   - Finds the matching security policy template from the cache
+   - Processes any parameters in the template (like <PackageFamilyName>)
+   - Substitutes those parameters with actual values
+   - Constructs the final security descriptor string */
+NTSTATUS
+StSecpGetStorageFolderStringSecurityDescriptor(
+    PCUNICODE_STRING FolderPath,
+    PWCHAR* OutStringSecurityDescriptor
+)
+{
+    WCHAR WVar1;
+    longlong lVar2;
+    UCHAR UVar3;
+    NTSTATUS return_status;
+    CUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY* policyElement;
+    PWCHAR* ppWVar4;
+    longlong stringLength;
+    PWCHAR currentChar;
+    PUNICODE_STRING firstName;
+    ulonglong halfOutputLength = 0;
+    ulonglong temp;
+    ulonglong totalOutputLength;
+    PWCHAR** parametersValues;
+    uint parameterCount;
+    ulonglong maxStringLength;
+    PWCHAR outputBuffer = NULL;
+    UCHAR isDebugProfile = FALSE;
+    longlong parameterLength = 0;
+    UNICODE_STRING parameterName = {0, 0, NULL};
+    UNICODE_STRING packageFamilyName = {0, 0, NULL};
+    PWCHAR* parameters = NULL;
+    UNICODE_STRING pathSegment = {0, 0, NULL};
+    UNICODE_STRING remainingPath = {0, 0, NULL};
+    UNICODE_STRING policyPath;
+    PWCHAR securityDescriptor;
+
+    policyElement = StSecpFindSecurityDescriptorPolicyElement(FolderPath);
+    if (policyElement == NULL)
+    {
+        return STATUS_OBJECT_NAME_NOT_FOUND;
+    }
+
+    securityDescriptor = policyElement->SecurityDescriptor;
+    if (securityDescriptor == NULL)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Calculate string length */
+    stringLength = 0x7fffffff;
+    do
+    {
+        if (*securityDescriptor == L'\0')
+        {
+            break;
+        }
+
+        securityDescriptor = securityDescriptor + 1;
+        stringLength = stringLength + -1;
+    }
+    while (stringLength != 0);
+
+    temp = STATUS_INVALID_PARAMETER;
+    if (stringLength != 0)
+    {
+        temp = halfOutputLength;
+    }
+    if (stringLength == 0)
+    {
+        return temp;
+    }
+    if (stringLength == 0)
+    {
+        return temp;
+    }
+
+    // policyPath._0_4_ = *(undefined4*)&policyElement->Path;
+    // policyPath._4_4_ = *(undefined4*)&(policyElement->Path).field_0x4;
+    // policyPath.Buffer._0_4_ = *(undefined4*)&(policyElement->Path).Buffer;
+    // policyPath.Buffer._4_4_ = *(undefined4*)((longlong)&(policyElement->Path).Buffer + 4);
+    policyPath.Length = policyElement->Path.Length;
+    policyPath.MaximumLength = policyElement->Path.MaximumLength;
+    policyPath.Buffer = policyElement->Path.Buffer;
+
+    totalOutputLength = (0x7fffffff - stringLength) * 2 + 2;
+    /* FsRtlDissectName seperates parts of a path, for example:
+     * for Path = "Folder\SubFolder\file.txt" =>
+     * FirstName = "Folder"
+     * RemainingName = "\SubFolder\file.txt"
+     */
+    FsRtlDissectName(policyPath, &parameterName, &pathSegment);
+    // policyPath._0_4_ = *(undefined4*)FolderPath;
+    // policyPath._4_4_ = *(undefined4*)&FolderPath->field_0x4;
+    // policyPath.Buffer._0_4_ = *(undefined4*)&FolderPath->Buffer;
+    // policyPath.Buffer._4_4_ = *(undefined4*)((longlong)&FolderPath->Buffer + 4);
+    policyPath.Length = FolderPath->Length;
+    policyPath.MaximumLength = FolderPath->MaximumLength;
+    policyPath.Buffer = FolderPath->Buffer;
+
+    maxStringLength = halfOutputLength;
+    while (true)
+    {
+        return_status = (NTSTATUS)temp;
+        firstName = &packageFamilyName;
+        /* Process each segment pair */
+        FsRtlDissectName(policyPath, firstName, &remainingPath);
+        UVar3 = isDebugProfile;
+        parameterCount = (uint)maxStringLength;
+
+        if (parameterName.Buffer == NULL)
+        {
+            break;
+        }
+        if ((*parameterName.Buffer == L'<') &&
+            (parameterName.Buffer[(ulonglong)(parameterName.Length >> 1) - 1] == L'>'))
+        {
+            if ((packageFamilyName.Buffer == NULL) || (parameterCount == 2))
+            {
+                return_status = STATUS_UNSUCCESSFUL;
+                goto StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return;
+            }
+
+            return_status = StSecpGetParameterValue(
+                &parameterName,
+                &packageFamilyName,
+                (PWCHAR*)(&parameters + maxStringLength)
+            );
+
+            if (return_status < 0)
+            {
+                goto StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return;
+            }
+
+            ppWVar4 = (&parameters)[maxStringLength];
+
+            if (ppWVar4 == NULL)
+            {
+                return_status = STATUS_INVALID_PARAMETER;
+                goto StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return;
+            }
+
+            stringLength = 0x7fffffff;
+            do
+            {
+                if (*(WCHAR*)ppWVar4 == L'\0') break;
+                ppWVar4 = (PWCHAR*)((longlong)ppWVar4 + 2);
+                stringLength = stringLength + -1;
+            }
+            while (stringLength != 0);
+
+            temp = STATUS_INVALID_PARAMETER;
+
+            if (stringLength != 0)
+            {
+                temp = halfOutputLength;
+            }
+            return_status = (NTSTATUS)temp;
+            if ((stringLength == 0) || (lVar2 = (0x7fffffff - stringLength) * 2, stringLength == 0))
+            {
+                goto StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return;
+            }
+
+            totalOutputLength = totalOutputLength + lVar2;
+            maxStringLength = (ulonglong)(parameterCount + 1);
+            parameterLength = lVar2;
+        }
+        parameterCount = (uint)maxStringLength;
+
+        if (policyElement->DebugValue != NULL)
+        {
+            return_status = StSecpCheckConditionalPolicy(&parameterName, &packageFamilyName, &isDebugProfile);
+            temp = (ulonglong)(uint)return_status;
+
+            if (return_status < 0)
+            {
+                goto StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return;
+            }
+        }
+        // policyPath._0_4_ = pathSegment._0_4_;
+        // policyPath._4_4_ = pathSegment._4_4_;
+        // policyPath.Buffer._0_4_ = pathSegment.Buffer._0_4_;
+        // policyPath.Buffer._4_4_ = pathSegment.Buffer._4_4_;
+        policyPath.Length = pathSegment.Length;
+        policyPath.MaximumLength = pathSegment.Length;
+        policyPath.Buffer = pathSegment.Buffer;
+        FsRtlDissectName(policyPath, &parameterName, &pathSegment);
+        // policyPath._0_4_ = remainingPath._0_4_;
+        // policyPath._4_4_ = remainingPath._4_4_;
+        // policyPath.Buffer._0_4_ = remainingPath.Buffer._0_4_;
+        // policyPath.Buffer._4_4_ = remainingPath.Buffer._4_4_;
+        policyPath.Length = remainingPath.Length;
+        policyPath.MaximumLength = remainingPath.MaximumLength;
+        policyPath.Buffer = remainingPath.Buffer;
+    }
+    if (isDebugProfile != '\0')
+    {
+        return_status = RtlStringCbLengthW(policyElement->DebugValue, firstName, &parameterLength);
+
+        if (return_status < 0)
+        {
+            goto StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return;
+        }
+        totalOutputLength = totalOutputLength + parameterLength;
+    }
+    outputBuffer = ExAllocatePool2(0x100, totalOutputLength, POOL_TAG_STsp);
+    if (outputBuffer == NULL)
+    {
+        return_status = STATUS_NO_MEMORY;
+    }
+    else
+    {
+        if (parameterCount == 0)
+        {
+            securityDescriptor = policyElement->SecurityDescriptor;
+            halfOutputLength = totalOutputLength >> 1;
+
+            if (halfOutputLength - 1 < 0x7fffffff)
+            {
+                stringLength = 0x7ffffffe - halfOutputLength;
+                currentChar = outputBuffer;
+
+                do
+                {
+                    if ((stringLength + halfOutputLength == 0) ||
+                        (WVar1 = *(WCHAR*)(((longlong)securityDescriptor - (longlong)outputBuffer) + (longlong)
+                                currentChar),
+                            WVar1 == L'\0'))
+                        break;
+                    *currentChar = WVar1;
+                    currentChar = currentChar + 1;
+                    halfOutputLength = halfOutputLength - 1;
+                }
+                while (halfOutputLength != 0);
+
+                securityDescriptor = currentChar + -1;
+
+                if (halfOutputLength != 0)
+                {
+                    securityDescriptor = currentChar;
+                }
+
+                return_status = STATUS_BUFFER_OVERFLOW;
+
+                if (halfOutputLength != 0)
+                {
+                    return_status = STATUS_SUCCESS;
+                }
+
+                *securityDescriptor = L'\0';
+            }
+            else
+            {
+                return_status = STATUS_INVALID_PARAMETER;
+                if (halfOutputLength != 0)
+                {
+                    *outputBuffer = L'\0';
+                }
+            }
+        }
+        else if (parameterCount == 1)
+        {
+            return_status = RtlStringCbPrintfW(
+                outputBuffer,
+                totalOutputLength,
+                policyElement->SecurityDescriptor,
+                parameters
+            );
+        }
+        else if (parameterCount == 2)
+        {
+            return_status = RtlStringCbPrintfW(
+                outputBuffer,
+                totalOutputLength,
+                policyElement->SecurityDescriptor,
+                parameters
+            );
+        }
+        if (
+            (-1 < return_status) &&
+            (
+                (UVar3 == '\0' ||
+                    (return_status = RtlStringCbCatW(
+                        outputBuffer,
+                        totalOutputLength,
+                        policyElement->DebugValue
+                    ), -1 < return_status))
+            )
+        )
+        {
+            *OutStringSecurityDescriptor = outputBuffer;
+            outputBuffer = NULL;
+        }
+    }
+StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return:
+    if (parameterCount != 0)
+    {
+        parametersValues = &parameters;
+        halfOutputLength = (ulonglong)parameterCount;
+        do
+        {
+            if (*parametersValues != NULL)
+            {
+                ExFreePoolWithTag(*parametersValues, 0);
+            }
+            parametersValues = parametersValues + 1;
+            halfOutputLength = halfOutputLength - 1;
+        }
+        while (halfOutputLength != 0);
+    }
+
+    if (outputBuffer != NULL)
+    {
+        ExFreePoolWithTag(outputBuffer, POOL_TAG_STsp);
+    }
+
+    return return_status;
+}
+
+
+/* Two-Tier Policy Structure:
+* The driver maintains separate caches for:
+* 
+*  Security Descriptors: Likely control access permissions and encryption requirements for specific
+* files or directories
+* 
+*  Folder Properties: Likely define special handling for specific folders, possibly related to the
+* "chamber" we see in the driver's callbacks
+* 
+ */
+NTSTATUS
+StSecpInitializePolicyCache(
+    VOID)
+{
+    NTSTATUS return_status;
+    HANDLE registryKeyHandle = NULL;
+    UNICODE_STRING secDescRegistryPath = {
+        0x90,
+        0x92,
+        L"\\Registry\\Machine\\System\\ControlSet001\\Control\\StSec\\SecurityDescriptors"
+    };
+    OBJECT_ATTRIBUTES objectAttributes;
+
+
+    /* Circular linked list */
+    g_StSecSecurityDescriptorCacheListTail = g_StSecSecurityDescriptorCacheListHead;
+    g_StSecSecurityDescriptorCacheListHead = g_StSecSecurityDescriptorCacheListHead;
+
+    // objectAttributes.ObjectName = &secDescRegistryPath;
+    // objectAttributes._0_8_ = 0x30;
+    // objectAttributes._24_8_ = 0x240;
+    // objectAttributes.RootDirectory = NULL;
+    // objectAttributes._32_16_ = ZEXT816(0);
+    InitializeObjectAttributes(
+        &objectAttributes, // p: pointer to OBJECT_ATTRIBUTES
+        &secDescRegistryPath, // n: pointer to the UNICODE_STRING
+        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, // a: Attributes = 0x240
+        NULL, // r: RootDirectory
+        NULL // s: SecurityDescriptor
+    )
+
+    return_status = ZwOpenKey(&registryKeyHandle, 0x20019, &objectAttributes);
+
+    if (-1 < return_status)
+    {
+        /* Read security descriptor policies from the registry and populate the SecurityDescriptorCacheList */
+        return_status = StSecpGetSecurityDescriptorPolicy(registryKeyHandle);
+        if (-1 < return_status)
+        {
+            ZwClose(registryKeyHandle);
+
+            RtlInitUnicodeString(
+                &secDescRegistryPath,
+                L"\\Registry\\Machine\\System\\ControlSet001\\Control\\StSec\\FolderProperties"
+            );
+
+            registryKeyHandle = NULL;
+            /* Circular linked list */
+            g_StSecFolderPropertyCacheListTail = g_StSecFolderPropertyCacheListHead;
+            g_StSecFolderPropertyCacheListHead = g_StSecFolderPropertyCacheListHead;
+
+            // objectAttributes.ObjectName = &secDescRegistryPath;
+            // objectAttributes._0_8_ = CONCAT44(objectAttributes._4_4_, 0x30);
+            // objectAttributes.RootDirectory = NULL;
+            // objectAttributes._24_8_ = CONCAT44(objectAttributes._28_4_, 0x240);
+            // objectAttributes._32_16_ = ZEXT816(0);
+            InitializeObjectAttributes(
+                &objectAttributes, // p: pointer to OBJECT_ATTRIBUTES
+                &secDescRegistryPath, // n: pointer to the UNICODE_STRING
+                OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, // a: Attributes = 0x240
+                NULL, // r: RootDirectory
+                NULL // s: SecurityDescriptor
+            )
+
+            return_status = ZwOpenKey(&registryKeyHandle, 0x20019, &objectAttributes);
+
+            if (return_status < 0)
+            {
+                if (return_status == STATUS_OBJECT_NAME_NOT_FOUND)
+                {
+                    return_status = 0;
+                }
+            }
+            else
+            {
+                return_status = StSecpGetFolderPropertyPolicy(registryKeyHandle);
+            }
+        }
+    }
+    if (registryKeyHandle != NULL)
+    {
+        ZwClose(registryKeyHandle);
+    }
+
+    return return_status;
+}
+
+
+NTSTATUS
+StSecpOpenMasterKeyHandle(
+    HANDLE* OutMasterKeyHandle
+)
+{
+    NTSTATUS return_status;
+    HANDLE keyHandle = NULL;
+    UNICODE_STRING registryPath = {0, 0, NULL};
+    OBJECT_ATTRIBUTES objectAttributes;
+
+    // objectAttributes._28_4_ = 0;
+    // objectAttributes._4_4_ = 0;
+
+    RtlInitUnicodeString(&registryPath, L"\\REGISTRY\\MACHINE\\Software\\Microsoft\\StorageSec\\Encrypt");
+    // objectAttributes.RootDirectory = NULL;
+    // objectAttributes.ObjectName = &registryPath;
+    // objectAttributes.Length = 0x30;
+    // objectAttributes.Attributes = 0x240;
+    // objectAttributes._32_16_ = ZEXT816(0);
+    InitializeObjectAttributes(
+        &objectAttributes, // p: pointer to OBJECT_ATTRIBUTES
+        &registryPath, // n: pointer to UNICODE_STRING path
+        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, // a: 0x240
+        NULL, // r: RootDirectory
+        NULL // s: SecurityDescriptor
+    );
+
+    return_status = ZwOpenKey(&keyHandle, 0xf003f, &objectAttributes);
+
+    if (-1 < return_status)
+    {
+        *OutMasterKeyHandle = keyHandle;
+        keyHandle = NULL;
+    }
+
+    if (keyHandle != NULL)
+    {
+        ZwClose(keyHandle);
+    }
+
+    return return_status;
+}
+
+
+NTSTATUS
+StSecpPackageFamilyNameFromFullName(
+    PUNICODE_STRING PackageFullName,
+    PUNICODE_STRING OutPackageFamilyName
+)
+{
+    PWCH packageFamilyName;
+    ulonglong uVar1;
+    PWCH currentChar;
+    NTSTATUS return_status = STATUS_SUCCESS;
+    uint halfNameLength = PackageFullName->Length >> 1;
+    uint nameIndex = 0;
+    uint uVar2 = 0;
+    int underscoreCount = 0;
+    USHORT packageFamiltyNameLength;
+
+    /* Windows Package Name Format
+     * Windows Store apps use a specific naming format:
+     * 
+     * - Full Package Name: PublisherName.AppName_Version_Architecture_ResourceID_PublisherID
+     * - Package Family Name: PublisherName.AppName_PublisherID
+     * 
+     * For example, given a full package name like:
+     *   Microsoft.Office.Word_16.0.14228.20216_x64_en-us_8wekyb3d8bbwe
+     * The package family name would be:
+     *   Microsoft.Office.Word_8wekyb3d8bbwe
+     */
+
+    packageFamilyName = (PWCH)ExAllocatePool2(0x100, 0x82, 0x70537453);
+
+    if (packageFamilyName == NULL)
+    {
+        return STATUS_NO_MEMORY;
+    }
+    /* The loop copies characters until the first underscore */
+    for (; (nameIndex < halfNameLength && (PackageFullName->Buffer[nameIndex] != L'_')); nameIndex = nameIndex + 1)
+    {
+        if (0x3f < uVar2)
+        {
+            goto StSecpPackageFamilyNameFromFullName_return_error;
+        }
+
+        uVar1 = (ulonglong)uVar2;
+        uVar2 = uVar2 + 1;
+        packageFamilyName[uVar1] = PackageFullName->Buffer[nameIndex];
+    }
+    if (nameIndex == halfNameLength)
+    {
+    StSecpPackageFamilyNameFromFullName_return_error:
+        return_status = STATUS_BAD_DATA;
+
+        StSecFree(packageFamilyName);
+    }
+    else
+    {
+        if (nameIndex < halfNameLength)
+        {
+            currentChar = PackageFullName->Buffer + nameIndex;
+            do
+            {
+                /* This is searching for the 4th underscore in the string.
+                 * The 4th underscore precedes the PublisherID, which is the final component of the package family
+                 * name.
+                 */
+                if ((*currentChar == L'_') && (underscoreCount = underscoreCount + 1, underscoreCount == 4)) break;
+                nameIndex = nameIndex + 1;
+                currentChar = currentChar + 1;
+            }
+            while (nameIndex < halfNameLength);
+            if (nameIndex == halfNameLength) goto StSecpPackageFamilyNameFromFullName_return_error;
+        }
+        /* After finding the 4th underscore, this loop copies all remaining characters to the output buffer */
+        for (; nameIndex < halfNameLength; nameIndex = nameIndex + 1)
+        {
+            if (0x3f < uVar2)
+            {
+                goto StSecpPackageFamilyNameFromFullName_return_error;
+            }
+            uVar1 = (ulonglong)uVar2;
+            uVar2 = uVar2 + 1;
+            packageFamilyName[uVar1] = PackageFullName->Buffer[nameIndex];
+        }
+        packageFamiltyNameLength = (short)uVar2 * 2;
+        packageFamilyName[uVar2] = L'\0';
+
+        OutPackageFamilyName->Length = packageFamiltyNameLength;
+        OutPackageFamilyName->MaximumLength = packageFamiltyNameLength + 2;
+        OutPackageFamilyName->Buffer = packageFamilyName;
+    }
+
+    return return_status;
+}
+
+
+/* This function reads an encrypted key blob from secure storage (the registry) and returns both the
+ * blob itself and its size to the caller */
+NTSTATUS
+StSecpReadSealedKeyBlob(
+    PUCHAR* OutSealedKeyBlob,
+    PULONG OutSealedKeyBlobSize
+)
+{
+    NTSTATUS return_status;
+    KEY_VALUE_PARTIAL_INFORMATION* keyValueInfo = NULL;
+    PUCHAR sealedMasterKeyBlob;
+    ULONG length = 0;
+    HANDLE masterKeyHandle = NULL;
+    UNICODE_STRING masterKeyValueName = {0, 0, NULL};
+    ULONG sealedMasterKeyBlobSize;
+
+    return_status = StSecpOpenMasterKeyHandle(&masterKeyHandle);
+
+    if (-1 < return_status)
+    {
+        RtlInitUnicodeString(&masterKeyValueName, L"MK");
+
+        return_status = ZwQueryValueKey(
+            masterKeyHandle,
+            &masterKeyValueName,
+            KeyValuePartialInformation,
+            NULL,
+            length,
+            length
+        );
+
+        if (return_status == STATUS_BUFFER_OVERFLOW || return_status == STATUS_BUFFER_TOO_SMALL)
+        {
+            keyValueInfo = ExAllocatePool2(0x100, length, POOL_TAG_STsp);
+
+            if (keyValueInfo != NULL)
+            {
+                return_status =
+                    ZwQueryValueKey(
+                        masterKeyHandle,
+                        &masterKeyValueName,
+                        KeyValuePartialInformation,
+                        keyValueInfo,
+                        length,
+                        &length
+                    );
+
+                if (return_status < 0)
+                {
+                    goto StSecpReadSealedKeyBlob_cleanup_and_return;
+                }
+
+                sealedMasterKeyBlobSize = keyValueInfo->DataLength;
+                sealedMasterKeyBlob = ExAllocatePool2(
+                    0x100,
+                    sealedMasterKeyBlobSize,
+                    POOL_TAG_STsp
+                );
+
+                if (sealedMasterKeyBlob != NULL)
+                {
+                    memcpy(sealedMasterKeyBlob, keyValueInfo->Data, sealedMasterKeyBlobSize);
+                    *OutSealedKeyBlobSize = sealedMasterKeyBlobSize;
+                    *OutSealedKeyBlob = sealedMasterKeyBlob;
+                    goto StSecpReadSealedKeyBlob_cleanup_and_return;
+                }
+            }
+
+            return_status = STATUS_NO_MEMORY;
+        }
+    }
+StSecpReadSealedKeyBlob_cleanup_and_return:
+    if (masterKeyHandle != NULL)
+    {
+        ZwClose(masterKeyHandle);
+    }
+
+    if (keyValueInfo != NULL)
+    {
+        StSecFree(keyValueInfo);
+    }
+
+    /* 1. Registry-Based Key Storage: The master key is stored in the registry rather than in a file or
+       TPM, suggesting a balance between security and accessibility.
+       2. Sealed Key Format: The key is stored in a "sealed" format.
+       3. Fixed Storage Location: The key is stored at a fixed registry path, making it easily
+       accessible to the driver but potentially to other privileged processes as well. */
+    return return_status;
+}
+
+/* This function takes a raw (unprotected) master key and transforms it into a sealed key blob that
+ * can only be unsealed by the specific TPM that created it */
+NTSTATUS
+StSecpSealKey(
+    PUCHAR UnsealedKey,
+    ULONG UnsealedKeySize,
+    PUCHAR OutSealedKey,
+    PULONG OutsealedKeySize
+)
+{
+    BOOLEAN skipSealKey;
+    int contextCreateResult;
+    TBS_RESULT tpmCommandResult;
+    NTSTATUS return_status;
+    undefined7 extraout_var;
+    void* masterKey;
+    ulonglong unsealedKeySize;
+    UINT32 cbCommand;
+    undefined auStackY_2c8[32];
+    UINT32 pcbResult;
+    TBS_HCONTEXT tbsHContext;
+    TBS_CONTEXT_PARAMS2 contextParams2;
+    PCBYTE abCommand;
+    undefined2 uStack_240;
+    undefined2 uStack_23e;
+    undefined4 uStack_23c;
+    undefined4 local_238;
+    undefined4 uStack_234;
+    undefined4 uStack_230;
+    uint uStack_22c;
+    char local_228;
+    undefined4 commandBuffer[3];
+    undefined8 uStack_21b;
+    undefined2 auStack_213[229];
+
+
+    masterKey = g_MasterKey;
+    unsealedKeySize = (ulonglong)UnsealedKeySize;
+    contextParams2.version = 2;
+    contextParams2.field1_0x4.asUINT32 = 4;
+    tbsHContext = NULL;
+    memset(&abCommand, 0, 0x200);
+    pcbResult = 0x200;
+    cbCommand = UnsealedKeySize + 0x37;
+    skipSealKey = StSecpSealKeyTestHookSet();
+    if ((int)CONCAT71(extraout_var, skipSealKey) == 0)
+    {
+        if ((0x80 < UnsealedKeySize) ||
+            (contextCreateResult = Tbsi_Context_Create(&contextParams2, &tbsHContext), contextCreateResult != 0))
+            goto StSecpSealKey_cleanup_and_return;
+        abCommand._6_2_ = 0;
+        uStack_240 = 0x5301;
+        uStack_23e = 0x81;
+        /* Set up TPM command for sealing */
+        uStack_23c = 0x100;
+        local_238 = 0x400900;
+        uStack_234 = 0x900;
+        /* onstruct command header */
+        abCommand._0_4_ = CONCAT13((char)(cbCommand >> 0x10), CONCAT12((char)(cbCommand >> 0x18), 0x280));
+        abCommand._4_1_ = (undefined)(cbCommand >> 8);
+        /* Set up key data parameters */
+        uStack_230 = CONCAT13((char)(UnsealedKeySize + 4 >> 8), 1);
+        local_228 = (char)UnsealedKeySize;
+        uStack_22c = (uint)(byte)(local_228 + 4) | (UnsealedKeySize >> 8) << 0x18;
+        abCommand._5_1_ = (undefined)cbCommand;
+        /* Copy the actual master key into the command buffer */
+        memcpy(commandBuffer, masterKey, unsealedKeySize);
+        /* Additional TPM parameters after the key */
+        *(undefined4*)((longlong)commandBuffer + unsealedKeySize) = 0x8000e00;
+        *(undefined4*)((longlong)commandBuffer + unsealedKeySize + 4) = 0xb00;
+        *(undefined4*)((longlong)commandBuffer + unsealedKeySize + 8) = 0x5204;
+        *(undefined8*)((longlong)&uStack_21b + unsealedKeySize) = 0x1000;
+        *(undefined2*)((longlong)auStack_213 + unsealedKeySize) = 0;
+
+        /* Submit command to TPM */
+        tpmCommandResult = Tbsip_Submit_Command(
+            tbsHContext,
+            0,
+            200,
+            (PCBYTE)&abCommand,
+            cbCommand,
+            (PBYTE)&abCommand,
+            &pcbResult
+        );
+
+        if ((tpmCommandResult != 0) || (CONCAT22(uStack_240, abCommand._6_2_) != 0))
+            goto
+                StSecpSealKey_cleanup_and_return;
+        /* Calculate location and size of sealed blob in the response */
+        contextCreateResult = (uStack_23c >> 0x18) + 2 + (uStack_23c >> 0x10 & 0xff) * 0x100;
+        UnsealedKeySize =
+            (uint)*(byte*)((longlong)&abCommand + (ulonglong)(contextCreateResult + 0xe)) * 0x100 + 2 +
+            (uint)*(byte*)((longlong)&abCommand + (ulonglong)(contextCreateResult + 0xf)) + contextCreateResult;
+        if ((OutSealedKey != NULL) && (UnsealedKeySize <= *OutsealedKeySize))
+        {
+            /* Copy sealed blob to output buffer if size permits */
+            unsealedKeySize = (ulonglong)UnsealedKeySize;
+            masterKey = (void*)((longlong)&uStack_23c + 2);
+            goto StSecpSealKey_set_sealedKey;
+        }
+    }
+    else if ((OutSealedKey != NULL) && (UnsealedKeySize <= *OutsealedKeySize))
+    {
+    StSecpSealKey_set_sealedKey:
+        memcpy(OutSealedKey, masterKey, unsealedKeySize);
+    }
+    *OutsealedKeySize = UnsealedKeySize;
+StSecpSealKey_cleanup_and_return:
+    if (tbsHContext != NULL)
+    {
+        Tbsip_Context_Close(tbsHContext);
+    }
+    return return_status;
+}
+
+
+/* This function checks if a special registry key is set that would allow the driver to bypass the
+ * normal cryptographic protection of the master key */
+BOOLEAN
+StSecpSealKeyTestHookSet(
+    VOID
+    )
+{
+    NTSTATUS status;
+    PVOID rtlQueryRegistryValuesExRoutinePtr;
+    UNICODE_STRING rtlQueryRegistryValuesExRoutineName = {0, 0, NULL};
+    RTL_QUERY_REGISTRY_TABLE queryTable = {
+        NULL,
+        0x120,
+        L"SkipSealKey",
+        &g_SkipSealKey,
+        0x4000000,
+        NULL,
+        4
+    };
+
+    RtlInitUnicodeString(&rtlQueryRegistryValuesExRoutineName, L"RtlQueryRegistryValuesEx");
+
+    rtlQueryRegistryValuesExRoutinePtr = MmGetSystemRoutineAddress(&rtlQueryRegistryValuesExRoutineName);
+
+    if (rtlQueryRegistryValuesExRoutinePtr == NULL)
+    {
+        // rtlQueryRegistryValuesExRoutinePtr = RtlQueryRegistryValues_exref;
+        rtlQueryRegistryValuesExRoutinePtr = RtlQueryRegistryValues;
+    }
+
+    status = rtlQueryRegistryValuesExRoutinePtr(
+        0,
+        L"\\REGISTRY\\MACHINE\\Software\\Microsoft\\StorageSec\\Encrypt",
+        &queryTable,
+        0,
+        0
+    );
+
+    if (status < 0)
+    {
+        g_SkipSealKey = 0;
+    }
+
+    return g_SkipSealKey != 0;
+}
+
+/* This function is responsible for "unsealing" (decrypting) the master key that was previously
+ * protected using the Trusted Platform Module's (TPM) capabilities. */
+NTSTATUS StSecpUnsealKey(
+    PUCHAR SealedKeyBlob,
+    ULONG SealedKeyBlobSize,
+    PUCHAR OutUnsealedKey,
+    PULONG OutUnsealedKeySize
+)
+
+{
+    BOOLEAN skipSealKey;
+    TBS_RESULT contextCreateResult;
+    TBS_RESULT tpmCommandResult;
+    NTSTATUS return_status;
+    undefined7 extraout_var;
+    UINT32 cbCommand;
+    undefined auStackY_2d8[32];
+    UINT32 local_298;
+    undefined4 local_290;
+    undefined4 uStack_28c;
+    undefined2 uStack_288;
+    undefined2 uStack_286;
+    undefined2 uStack_284;
+    undefined2 uStack_282;
+    undefined2 uStack_280;
+    undefined4 uStack_27e;
+    undefined2 uStack_27a;
+    undefined2 uStack_278;
+    TBS_HCONTEXT tbsHContext;
+    TBS_CONTEXT_PARAMS2 contextParams2;
+    BYTE abCommand;
+    undefined uStack_254;
+    undefined uStack_253;
+    undefined2 uStack_252;
+    undefined2 uStack_250;
+    undefined2 uStack_24e;
+    undefined2 uStack_24c;
+    byte bStack_24a;
+    byte bStack_249;
+    undefined2 uStack_248;
+    undefined4 uStack_246;
+    undefined2 uStack_242;
+    undefined2 uStack_240;
+    undefined local_23e;
+    undefined sealedKeyBlob[485];
+    ulonglong sec_cookie_xor;
+
+    local_290 = 0x280;
+    uStack_28c = 0x1b00;
+    uStack_288 = 0x5e01;
+    uStack_282 = 0;
+    uStack_280 = 0x900;
+    uStack_27e = 0x9000040;
+    uStack_27a = 0;
+    uStack_278 = 1;
+    /* Becuase version = 2 the type must be tdTBS_CONTEXT_PARAMS*2* */
+    contextParams2.version = 2;
+    contextParams2.field1_0x4.asUINT32 = 4;
+    tbsHContext = NULL;
+    memset(&abCommand, 0, 0x200);
+    local_298 = 0x200;
+    cbCommand = SealedKeyBlobSize + 0x1b;
+    skipSealKey = StSecpSealKeyTestHookSet();
+    if ((int)CONCAT71(extraout_var, skipSealKey) == 0)
+    {
+        if ((0x1e5 < SealedKeyBlobSize) ||
+            (contextCreateResult = Tbsi_Context_Create(&contextParams2, &tbsHContext), contextCreateResult != 0))
+            goto StSecpUnsealKey_cleanup_and_return;
+        /* Setup TPM unseal command */
+        uStack_252 = 0;
+        uStack_250 = 0x5701;
+        _abCommand = CONCAT13((char)(cbCommand >> 0x10), CONCAT12((char)(cbCommand >> 0x18), 0x280));
+        uStack_254 = (undefined)(cbCommand >> 8);
+        uStack_24e = 0x81;
+        uStack_24c = 0x100;
+        bStack_24a = 0;
+        bStack_249 = 0;
+        uStack_248 = 0x900;
+        uStack_246 = 0x9000040;
+        uStack_242 = 0;
+        uStack_240 = 1;
+        local_23e = 0;
+        uStack_253 = (undefined)cbCommand;
+        memcpy(sealedKeyBlob, SealedKeyBlob, (ulonglong)SealedKeyBlobSize);
+        /* Submits the command to the TPM for processing */
+        tpmCommandResult = Tbsip_Submit_Command(tbsHContext, 0, 200, &abCommand, cbCommand, &abCommand, &local_298);
+        if ((tpmCommandResult != 0) || (CONCAT22(uStack_250, uStack_252) != 0)) goto StSecpUnsealKey_cleanup_and_return;
+        /* Setup second TPM command */
+        uStack_286 = uStack_24e;
+        uStack_284 = uStack_24c;
+        uStack_240 = uStack_278;
+        local_298 = 0x200;
+        _abCommand = local_290;
+        uStack_254 = (undefined)uStack_28c;
+        uStack_253 = (undefined)((uint)uStack_28c >> 8);
+        uStack_252 = (undefined2)((uint)uStack_28c >> 0x10);
+        uStack_250 = uStack_288;
+        bStack_24a = (byte)uStack_282;
+        bStack_249 = (byte)((ushort)uStack_282 >> 8);
+        uStack_248 = uStack_280;
+        uStack_246 = uStack_27e;
+        uStack_242 = uStack_27a;
+        local_23e = 0;
+        /* Submit second TPM command */
+        tpmCommandResult = Tbsip_Submit_Command(tbsHContext, 0, 200, &abCommand, 0x1b, &abCommand, &local_298);
+        if (tpmCommandResult != 0) goto StSecpUnsealKey_cleanup_and_return;
+        /* Extract unsealed key size and data */
+        SealedKeyBlobSize = (uint)bStack_24a * 0x100 + (uint)bStack_249;
+        if ((OutUnsealedKey != NULL) && (SealedKeyBlobSize <= *OutUnsealedKeySize))
+        {
+            /* Copy unsealed key to output buffer if size permits */
+            memcpy(OutUnsealedKey, &uStack_248, (ulonglong)SealedKeyBlobSize);
+        }
+    }
+    else if ((OutUnsealedKey != NULL) && (SealedKeyBlobSize <= *OutUnsealedKeySize))
+    {
+        /* skipSealKey == true then return the unsealed key */
+        memcpy(OutUnsealedKey, SealedKeyBlob, (ulonglong)SealedKeyBlobSize);
+    }
+    *OutUnsealedKeySize = SealedKeyBlobSize;
+StSecpUnsealKey_cleanup_and_return:
+    if (tbsHContext != NULL)
+    {
+        Tbsip_Context_Close(tbsHContext);
+    }
+
+    return return_status;
+}
+
+
+NTSTATUS StSecpWriteSealedKeyBlob(
+    PVOID SealedKeyBlob,
+    ULONG KeyBlobSize
+)
+{
+    NTSTATUS return_status;
+    HANDLE* masterKeyHandle = NULL;
+    UNICODE_STRING mkValueName = {0, 0, NULL};
+
+    return_status = StSecpOpenMasterKeyHandle(&masterKeyHandle);
+
+    if (-1 < return_status)
+    {
+        RtlInitUnicodeString(&mkValueName, L"MK");
+
+        return_status = ZwSetValueKey(
+            masterKeyHandle,
+            &mkValueName,
+            0,
+            3,
+            SealedKeyBlob,
+            KeyBlobSize
+        );
+
+        if (-1 < return_status)
+        {
+            return_status = ZwFlushKey(masterKeyHandle);
+        }
+    }
+    if (masterKeyHandle != NULL)
+    {
+        ZwClose(masterKeyHandle);
+    }
+
+    return return_status;
 }

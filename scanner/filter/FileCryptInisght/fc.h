@@ -41,6 +41,7 @@ typedef long long longlong;
 typedef unsigned long long ulonglong;
 typedef unsigned int uint;
 typedef unsigned short ushort;
+typedef unsigned char undefined2;
 
 /* Holds AES-CBC encryption settings - 24 bytes in length */
 typedef struct CUSTOM_FC_BCRYPT_DATA
@@ -433,6 +434,7 @@ ULONG g_cbHashObjectLength = 0;
 
 PUCHAR g_MasterKey = NULL;
 BOOLEAN g_MasterKeyPersisted = FALSE;
+BOOLEAN g_SkipSealKey = FALSE;
 
 HANDLE g_DebugProfileKey = NULL;
 

@@ -107,7 +107,7 @@ StSecpFreeNonPaged(
     ULONG Size
 );
 
-VOID
+NTSTATUS
 StSecpGetAppSid(
     PUNICODE_STRING Data,
     PWCHAR* ResultStringSid
