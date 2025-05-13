@@ -388,6 +388,7 @@ RtlStringCopyWorkerW (
   if (DestinationSize != 0) {
     return_status = STATUS_SUCCESS;
   }
+  
   *terminationPoint = L'\0';
   
   return return_status;

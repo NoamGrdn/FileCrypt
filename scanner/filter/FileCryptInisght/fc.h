@@ -110,25 +110,25 @@ typedef struct _CUSTOM_FC_CREATE_CONTEXT
     BOOLEAN IsAccessModified;
 } CUSTOM_FC_CREATE_CONTEXT, *PCUSTOM_FC_CREATE_CONTEXT;
 
+/* 16 bytes in size */
+typedef struct _CUSTOM_FC_READ_CONTEXT
+{
+    PCUSTOM_FC_VOLUME_CONTEXT VolumeContext;
+    PCUSTOM_FC_STREAM_CONTEXT StreamContext;
+} CUSTOM_FC_READ_CONTEXT, *PCUSTOM_FC_READ_CONTEXT;
+
 /* Used in FCPostRead as parameters for the FCDecryptWorker function - 16 bytes in size */
 typedef struct _CUSTOM_FC_DECRYPT_PARAMS
 {
     PFLT_CALLBACK_DATA CallbackData;
-    struct CUSTOM_FC_READ_CONTEXT* CompletionContext;
+    PCUSTOM_FC_READ_CONTEXT CompletionContext;
 } CUSTOM_FC_DECRYPT_PARAMS, *PCUSTOM_FC_DECRYPT_PARAMS;
-
-/* 16 bytes in size */
-typedef struct _CUSTOM_FC_READ_CONTEXT
-{
-    struct CUSTOM_FC_VOLUME_CONTEXT* VolumeContext;
-    struct CUSTOM_FC_STREAM_CONTEXT* StreamContext;
-} CUSTOM_FC_READ_CONTEXT, *PCUSTOM_FC_READ_CONTEXT;
 
 /* Information passed from FCPreWrite to FCPostWrite - 25 bytes in size*/
 typedef struct _CUSTOM_FC_WRITE_CONTEXT
 {
-    struct CUSTOM_FC_VOLUME_CONTEXT* VolumeContext;
-    struct CUSTOM_FC_STREAM_CONTEXT* StreamContext;
+    PCUSTOM_FC_VOLUME_CONTEXT VolumeContext;
+    PCUSTOM_FC_STREAM_CONTEXT StreamContext;
     /* The data that being written to the disk after encryption */
     PUCHAR Ciphertext;
     /* Where Ciphertext was allocated: "x01" => NPagedLookasideList, "x02" => PoolWithTag */
@@ -386,24 +386,51 @@ typedef struct _MCGEN_TRACE_CONTEXT
 } MCGEN_TRACE_CONTEXT, *PMCGEN_TRACE_CONTEXT;
 #endif
 
-EXTERN_C __declspec(selectany) DECLSPEC_CACHEALIGN ULONG Microsoft_Windows_FileCrypt_DriverEnableBits[1];
+EXTERN_C __declspec(selectany) DECLSPEC_CACHEALIGN ULONG Microsoft_Windows_FileCryptEnableBits;
 EXTERN_C __declspec(selectany) const ULONGLONG Microsoft_Windows_FileCrypt_DriverKeywords[1] = {0x8000000000000001};
 EXTERN_C __declspec(selectany) const UCHAR Microsoft_Windows_FileCrypt_DriverLevels[1] = {4};
 EXTERN_C __declspec(selectany) MCGEN_TRACE_CONTEXT Microsoft_Windows_FileCrypt_DRIVER_PROVIDER_GUID_Context = {
-    0, 0, 0, 0, 0, 0, 0, 0, 1, Microsoft_Windows_FileCrypt_DriverEnableBits, Microsoft_Windows_FileCrypt_DriverKeywords,
+    0, 0, 0, 0, 0, 0, 0, 0, 1, &Microsoft_Windows_FileCryptEnableBits, Microsoft_Windows_FileCrypt_DriverKeywords,
     Microsoft_Windows_FileCrypt_DriverLevels
 };
 
 EVENT_DESCRIPTOR LockUserBufferFailure;
+EVENT_DESCRIPTOR GetSystemAddressFailure;
+EVENT_DESCRIPTOR GetFsZeroingOffsetFailure;
+EVENT_DESCRIPTOR DecryptWorkerFailure;
+EVENT_DESCRIPTOR DecryptFailure;
+EVENT_DESCRIPTOR EncryptFailure;
+EVENT_DESCRIPTOR GetChamberProfileEncryptionKeyFailure;
+EVENT_DESCRIPTOR GenerateSymmetricKeyFailure;
+EVENT_DESCRIPTOR GetSecurityDescriptorFailure;
+EVENT_DESCRIPTOR PostCreateFailure;
 
 
 /* Filter */
 
+#define 
+ULONG gFCFlags = 0;
+
+#define EncryptMediaFlagBit                0x02
+#define EncryptAllFlagBit                  0x04
+#define FilterEmulatedExternalDriveFlagBit 0x08
+#define BypassAccessChecksFlagBit          0x10
+ULONG FcDebugTraceLevel = 0;
+
+UNICODE_STRING gMusicPath = {0xe, 0x10, L"\\Music\\"};
+UNICODE_STRING gPicturesPath = {0x14, 0x16, L"\\Pictures\\"};
+UNICODE_STRING gVideosPath = {0x10, 0x12, L"\\Videos\\"};
+
+UNICODE_STRING gRegistryPath = {0, 0, NULL};
 PFLT_GENERIC_WORKITEM g_WorkItem;
 PVOID g_FilterObject;
 PFLT_FILTER gFilterHandle;
 
-ULONG g_WorkItemQueued; 
+ULONG g_WorkItemQueued;
+
+NPAGED_LOOKASIDE_LIST gPre2PostIoContextList;
+NPAGED_LOOKASIDE_LIST gPre2PostCreateContextList;
+NPAGED_LOOKASIDE_LIST gShadowBufferList;
 
 /* Package */
 

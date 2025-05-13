@@ -2607,7 +2607,7 @@ NTSTATUS StSecpGetSidFromUserName(PCUNICODE_STRING UserName, PWCHAR* ResultSid)
 
     /* This function doesn't actually convert the username to a SID as its name suggests. Instead, it
        simply copies the UserName into the ResultSid */
-    sid = ExAllocatePool2(0x40, sidSize, 0x6e537453);
+    sid = ExAllocatePool2(0x40, sidSize, POOL_TAG_StSn);
 
     if (sid == NULL)
     {
@@ -3133,7 +3133,7 @@ StSecpPackageFamilyNameFromFullName(
      *   Microsoft.Office.Word_8wekyb3d8bbwe
      */
 
-    packageFamilyName = (PWCH)ExAllocatePool2(0x100, 0x82, 0x70537453);
+    packageFamilyName = (PWCH)ExAllocatePool2(0x100, 0x82, POOL_TAG_STsp);
 
     if (packageFamilyName == NULL)
     {
