@@ -427,12 +427,12 @@ FCInstanceSetup(
                 /* Checks if we are not on mobile and the device can persist ACLS */
                 if ((isMobileOS == FALSE) && ((vqb->DeviceObject->Flags & DO_SUPPORTS_PERSISTENT_ACLS) != 0))
                 {
-                    volumeContext->VerificationNeeded = 0;
+                    volumeContext->VerificationNeeded = FALSE;
                 }
                 else
                 {
                     /* Always verify on mobile */
-                    volumeContext->VerificationNeeded = 1;
+                    volumeContext->VerificationNeeded = TRUE;
                     vqb_deviceObject = vqb->DeviceObject;
                     vqb_deviceObject->Flags = vqb_deviceObject->Flags | DO_SUPPORTS_PERSISTENT_ACLS;
                 }
@@ -1012,59 +1012,52 @@ FCpObtainSecurityInfoCallout(
     PCUSTOM_FC_CHAMBER_DATA ChamberData
 )
 {
-    BOOLEAN isChamber;
+    BOOLEAN chamberMatch;
     NTSTATUS status;
-    PWCHAR chamberId;
-    PUNICODE_STRING chamberPathRef;
-    PSECURITY_DESCRIPTOR securityDescriptor;
-    PWCHAR* chamerIdRef;
-    PUNICODE_STRING local_res8 = NULL;
+    PWCHAR assignedChamberId;
+    PSECURITY_DESCRIPTOR securityDescriptor = &ChamberData->SecurityDescriptor;
+    PWCHAR* chamberId;
     PCUNICODE_STRING chamberPath = ChamberData->InputPath;
-    PSECURITY_DESCRIPTOR* securityDescriptorRef = &ChamberData->SecurityDescriptor;
 
     /* reset ChamberId */
     ChamberData->ChamberId = NULL;
 
-    securityDescriptor = &local_res8;
-
-    if (securityDescriptorRef != NULL)
-    {
-        securityDescriptor = securityDescriptorRef;
-    }
     if (chamberPath->Length == 0)
     {
         ChamberData->Status = 0;
+
         return;
     }
 
-    chamerIdRef = &ChamberData->ChamberId;
-    chamberPathRef = chamberPath;
-    status = StSecGetSecurityDescriptor(chamberPath, securityDescriptor, chamerIdRef, &ChamberData->ChamberType);
-    if (securityDescriptorRef == NULL && (chamberPathRef = local_res8, local_res8 != NULL))
+    chamberId = &ChamberData->ChamberId;
+    status = StSecGetSecurityDescriptor(chamberPath, securityDescriptor, chamberId, &ChamberData->ChamberType);
+
+    if (securityDescriptor == NULL && chamberId != NULL)
     {
-        ExFreePoolWithTag(local_res8, POOL_TAG_STsp);
+        ExFreePoolWithTag(chamberId, POOL_TAG_STsp);
     }
     if (status < 0)
     {
         if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
         {
-            McTemplateK0d_EtwWriteTransfer(chamberPathRef, &GetSecurityDescriptorFailure, chamerIdRef, status);
+            McTemplateK0d_EtwWriteTransfer(chamberPath, &GetSecurityDescriptorFailure, chamberId, status);
         }
+
         goto FCpObtainSecurityInfoCallout_return;
     }
 
     /* If StSecGetSecurityDescriptor succeeded, the current file/directory were succsessfuly resolved to
-       a ChamberId, ChamberType and we can return.
-       Otherwise, check for predetermined chambers */
+     * a ChamberId, ChamberType and we can return.
+     * Otherwise, check for predetermined chambers */
     if (ChamberData->ChamberId != NULL)
     {
         goto FCpObtainSecurityInfoCallout_return;
     }
 
-    /* if EncryptAll is ON chamberId is the global guid */
+    /* If EncryptAll is ON chamberId is the global guid */
     if ((gFCFlags & EncryptAllFlagBit) != 0)
     {
-        chamberId = L"{0b7992da-c5e6-41e3-b24f-55419b997a15}";
+        assignedChamberId = L"{0b7992da-c5e6-41e3-b24f-55419b997a15}";
         goto FCpObtainSecurityInfoCallout_assign_chamberid_and_return;
     }
     if ((gFCFlags & EncryptMediaFlagBit) == 0)
@@ -1072,30 +1065,1694 @@ FCpObtainSecurityInfoCallout(
         goto FCpObtainSecurityInfoCallout_return;
     }
 
-    isChamber = RtlPrefixUnicodeString(&gMusicPath, chamberPath, '\x01');
-    if (isChamber == '\0')
+    chamberMatch = RtlPrefixUnicodeString(&gMusicPath, chamberPath, '\x01');
+    if (chamberMatch == '\0')
     {
-        isChamber = RtlPrefixUnicodeString(&gPicturesPath, chamberPath, '\x01');
-        if (isChamber != '\0')
+        chamberMatch = RtlPrefixUnicodeString(&gPicturesPath, chamberPath, '\x01');
+        if (chamberMatch != '\0')
         {
-            chamberId = L"PicturesChamber";
+            assignedChamberId = L"PicturesChamber";
             goto FCpObtainSecurityInfoCallout_assign_chamberid_and_return;
         }
-        isChamber = RtlPrefixUnicodeString(&gVideosPath, chamberPath, '\x01');
-        if (isChamber != '\0')
+        chamberMatch = RtlPrefixUnicodeString(&gVideosPath, chamberPath, '\x01');
+        if (chamberMatch != '\0')
         {
-            chamberId = L"VideosChamber";
+            assignedChamberId = L"VideosChamber";
             goto FCpObtainSecurityInfoCallout_assign_chamberid_and_return;
         }
     }
     else
     {
-        chamberId = L"MusicChamber";
+        assignedChamberId = L"MusicChamber";
     FCpObtainSecurityInfoCallout_assign_chamberid_and_return:
-        ChamberData->ChamberId = chamberId;
+        ChamberData->ChamberId = assignedChamberId;
     }
 
     ChamberData->ChamberType = 1;
 FCpObtainSecurityInfoCallout_return:
     ChamberData->Status = status;
+}
+
+/* FCPostCreate sets up the encryption infrastructure that will be used for all subsequent operations on the file */
+FLT_POSTOP_CALLBACK_STATUS
+FCPostCreate(
+    PFLT_CALLBACK_DATA Data,
+    PCFLT_RELATED_OBJECTS FltObjects,
+    CUSTOM_FC_CREATE_CONTEXT* CompletionContext,
+    FLT_POST_OPERATION_FLAGS Flags
+)
+{
+    NTSTATUS status = STATUS_SUCCESS;
+    PWCHAR chamberId = NULL;
+    PFLT_INSTANCE instance;
+    BOOLEAN isAccessModified = FALSE;
+    BOOLEAN isDirectory = FALSE;
+    ULONG chamberType = 1;
+    PCUSTOM_FC_STREAM_CONTEXT streamContext = NULL;
+    PCUSTOM_FC_VOLUME_CONTEXT volumeContext = NULL;
+    NTSTATUS ioStatus;
+    bool error = FALSE;
+
+    /* Extract data from completion context if available */
+    if (CompletionContext != NULL)
+    {
+        chamberId = CompletionContext->ChamberId;
+        chamberType = CompletionContext->ChamberType;
+        isAccessModified = CompletionContext->IsAccessModified;
+
+        /* frees the lookaside list entry that was used to pass the CompletionContext */
+        ExFreeToNPagedLookasideList(&gPre2PostCreateContextList, CompletionContext);
+    }
+
+    ioStatus = (Data->IoStatus).Status;
+
+    /* If error has occurred, or the operation is a reparse operation, don't do anything and return some error */
+    if ((ioStatus < 0) || (ioStatus == STATUS_REPARSE))
+    {
+        if ((ioStatus == STATUS_OBJECT_NAME_NOT_FOUND) && (isAccessModified != '\0'))
+        {
+            (Data->IoStatus).Status = STATUS_ACCESS_DENIED;
+        }
+
+        // TODO rename this variable
+        error = true;
+    }
+    else
+    {
+        if ((Flags & 1) == FLTFL_POST_OPERATION_DRAINING)
+        {
+            status = FltGetStreamContext(FltObjects->Instance, FltObjects->FileObject, (PFLT_CONTEXT*)streamContext);
+
+            if (status < 0)
+            {
+                if (chamberId == NULL)
+                {
+                    /* No chamber ID, skip encryption */
+                    status = STATUS_SUCCESS;
+                }
+                else
+                {
+                    status = FltIsDirectory(FltObjects->FileObject, FltObjects->Instance, &isDirectory);
+
+                    if (-1 < status && isDirectory == FALSE)
+                    {
+                        /* Retrieves the volume context which contains the AES-CBC cryptographic provider */
+                        status = FltGetVolumeContext(
+                            FltObjects->Filter,
+                            FltObjects->Volume,
+                            (PFLT_CONTEXT*)volumeContext
+                        );
+
+                        if (-1 < status)
+                        {
+                            status = FltAllocateContext(
+                                gFilterHandle,
+                                FLT_STREAM_CONTEXT,
+                                0x28,
+                                NonPagedPoolNx,
+                                (PFLT_CONTEXT*)streamContext
+                            );
+
+                            if (-1 < status)
+                            {
+                                /* Reset KeyData and ChamberType */
+                                streamContext->KeyData.BcryptKeyHandle = NULL;
+                                streamContext->KeyData.KeyObject = NULL;
+                                streamContext->KeyData.KeyObjectSize = 0;
+                                streamContext->ChamberType = 0;
+
+                                /* Set chamber info */
+                                streamContext->ChamberId = chamberId;
+                                streamContext->ChamberType = chamberType;
+                                chamberId = NULL;
+
+                                /* Initialize encryption - populate KeyData and ChamberType */
+                                status = FCpEncStreamStart(
+                                    &volumeContext->BcryptAlgHandle,
+                                    streamContext->ChamberId,
+                                    chamberType,
+                                    &streamContext->KeyData
+                                );
+
+                                if (-1 < status)
+                                {
+                                    /* Register the stream context with the filter manager */
+                                    status = FltSetStreamContext(
+                                        FltObjects->Instance,
+                                        FltObjects->FileObject,
+                                        FLT_SET_CONTEXT_KEEP_IF_EXISTS,
+                                        streamContext,
+                                        NULL
+                                    );
+
+                                    if (status == STATUS_FLT_CONTEXT_ALREADY_DEFINED)
+                                    {
+                                        status = STATUS_SUCCESS;
+                                    }
+                                    else if (-1 < status)
+                                    {
+                                        /* Successfully set - release our reference */
+                                        FltReleaseContext(streamContext);
+                                        streamContext = NULL;
+                                        chamberId = NULL;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (volumeContext != NULL)
+    {
+        FltReleaseContext(volumeContext);
+        volumeContext = NULL;
+    }
+    if (streamContext != NULL)
+    {
+        FltReleaseContext(streamContext);
+        streamContext = NULL;
+    }
+    if (chamberId != NULL)
+    {
+        FCpFreeChamberId(chamberId);
+    }
+    if ((!error) && (status < 0))
+    {
+        instance = FltObjects->Instance;
+        FltCancelFileOpen(instance, FltObjects->FileObject);
+        (Data->IoStatus).Status = status;
+        (Data->IoStatus).Information = 0;
+        if ((Microsoft_Windows_FileCryptEnableBits & 2) != 0)
+        {
+            McTemplateK0d_EtwWriteTransfer(instance, &PostCreateFailure, 0x1, status);
+        }
+    }
+
+    return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+// TODO
+FLT_POSTOP_CALLBACK_STATUS
+FCPostRead(
+    PFLT_CALLBACK_DATA CallbackData,
+    PCFLT_RELATED_OBJECTS FltObjects,
+    CUSTOM_FC_READ_CONTEXT* CompletionContext,
+    FLT_POST_OPERATION_FLAGS Flags
+)
+{
+    KIRQL currentIrql;
+    NTSTATUS ioStatus;
+    PFLT_GENERIC_WORKITEM fltWorkItem;
+    CUSTOM_FC_DECRYPT_PARAMS* fcDecryptParams;
+    CUSTOM_FC_DECRYPT_PARAMS* contexts;
+    code* event;
+    FLT_POSTOP_CALLBACK_STATUS status;
+    FLT_POSTOP_CALLBACK_STATUS return_status;
+    CUSTOM_FC_DECRYPT_PARAMS decryptParamsSetter;
+    bool shouldCleanupMemory;
+
+    shouldCleanupMemory = true;
+    fltWorkItem = NULL;
+    fcDecryptParams = NULL;
+    decryptParamsSetter = (CUSTOM_FC_DECRYPT_PARAMS)ZEXT816(0);
+    status = FLT_POSTOP_FINISHED_PROCESSING;
+    ioStatus = 0;
+    contexts = (CUSTOM_FC_DECRYPT_PARAMS*)CompletionContext;
+    return_status = FLT_POSTOP_FINISHED_PROCESSING;
+    /* The condition checks if:
+       1. FLTFL_POST_OPERATION_DRAINING is off => Not a cleanup call (fltKernel.h)
+       2. Whether the I/O operation succeeded (status >= 0)
+       3. Whether any data was actually read (Information != 0) */
+    if ((((Flags & 1) == 0) && (return_status = status, -1 < (CallbackData->IoStatus).field0_0x0.Status)) &&
+        ((CallbackData->IoStatus).Information != 0))
+    {
+        currentIrql = KeGetCurrentIrql();
+        /* THE IOQB PARAMETERS STRUCT HERE MIGHT BE WRONG
+           
+           This condition checks if immediate decryption is possible:
+           1. Either we're at a low IRQL (below DISPATCH_LEVEL)
+           2. Or the read size is small (< 131,073 bytes) AND either:
+             - An MDL (Memory Descriptor List) is available
+             - The FLTFL_CALLBACK_DATA_FS_FILTER_OPERATION flag is set
+           
+           The FLTFL_CALLBACK_DATA_FS_FILTER_OPERATION flag is raised. The flag indicates that the operation
+           is a file system filter operation */
+        if ((currentIrql < DISPATCH_LEVEL) ||
+            (((CallbackData->IoStatus).Information < 0x20001 &&
+                (((CallbackData->Iopb->Parameters).QueryEa.MdlAddress != NULL || ((CallbackData->Flags & 8) != 0))))))
+        {
+            decryptParamsSetter = (CUSTOM_FC_DECRYPT_PARAMS)CONCAT88(CompletionContext, CallbackData);
+            contexts = &decryptParamsSetter;
+            FCDecryptWorker(NULL, FltObjects->Instance, contexts);
+            shouldCleanupMemory = false;
+            ioStatus = (CallbackData->IoStatus).field0_0x0.Status;
+        }
+        else
+        {
+            /* If immediate decryption isn't possible */
+            fltWorkItem = FltAllocateGenericWorkItem();
+            if (fltWorkItem != NULL)
+            {
+                contexts = (CUSTOM_FC_DECRYPT_PARAMS*)0x63644346;
+                fcDecryptParams = (CUSTOM_FC_DECRYPT_PARAMS*)ExAllocatePool2(0x40, 0x10, 0x63644346);
+                if (fcDecryptParams != NULL)
+                {
+                    fcDecryptParams->CallbackData = CallbackData;
+                    fcDecryptParams->CompletionContext = CompletionContext;
+                    event = FCDecryptWorker;
+                    /* Queue the work item to call FCDecryptWorker asynchronously */
+                    ioStatus = FltQueueGenericWorkItem
+                        (fltWorkItem, FltObjects->Instance, FCDecryptWorker, DelayedWorkQueue, fcDecryptParams);
+                    contexts = (CUSTOM_FC_DECRYPT_PARAMS*)event;
+                    if (-1 < ioStatus)
+                    {
+                        shouldCleanupMemory = false;
+                        return_status = FLT_POSTOP_MORE_PROCESSING_REQUIRED;
+                    }
+                    goto FCPostRead_cleanup_and_return;
+                }
+            }
+            /* STATUS_INSUFFICIENT_RESOURCES */
+            ioStatus = -0x3fffff66;
+        }
+    }
+FCPostRead_cleanup_and_return:
+    if (ioStatus < 0)
+    {
+        (CallbackData->IoStatus).field0_0x0.Status = ioStatus;
+        (CallbackData->IoStatus).Information = 0;
+    }
+    if (shouldCleanupMemory)
+    {
+        FltReleaseContext(CompletionContext->VolumeContext);
+        FltReleaseContext(CompletionContext->StreamContext);
+        ExFreeToNPagedLookasideList((PNPAGED_LOOKASIDE_LIST)&gPre2PostIoContextList, CompletionContext);
+        if (fltWorkItem != NULL)
+        {
+            FltFreeGenericWorkItem(fltWorkItem);
+        }
+        if (fcDecryptParams != NULL)
+        {
+            ExFreePoolWithTag(fcDecryptParams, 0x63644346);
+        }
+        return_status = FLT_POSTOP_FINISHED_PROCESSING;
+    }
+    if ((ioStatus < 0) && ((_Microsoft_Windows_FileCryptEnableBits & 2) != 0))
+    {
+        McTemplateK0d_EtwWriteTransfer((ulonglong)_Microsoft_Windows_FileCryptEnableBits, &PostReadFailure, contexts,
+                                       ioStatus);
+    }
+
+    return return_status;
+}
+
+
+FLT_POSTOP_CALLBACK_STATUS
+FCPostWrite(
+    PFLT_CALLBACK_DATA CallbackData,
+    PCFLT_RELATED_OBJECTS RelatedObjects,
+    PCUSTOM_FC_WRITE_CONTEXT CompletionContext
+)
+{
+    FltReleaseContext(CompletionContext->VolumeContext);
+    FltReleaseContext(CompletionContext->StreamContext);
+
+    FCFreeShadowBuffer(
+        CompletionContext->StreamContext,
+        CompletionContext->Ciphertext,
+        CompletionContext->AllocationType
+    );
+
+    ExFreeToNPagedLookasideList(&gPre2PostIoContextList, CompletionContext);
+
+    return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+
+/* This function is the first major decision point when a file is opened or created. It decides:
+ * 
+ * 1. Whether the operation is allowed: Using security descriptors obtained from policies
+ * 2. Which encryption context applies: Based on chamber IDs from policy or defaults
+ * 3. How to pass information to post-operation: Through completion contexts
+ * 
+ * Uses key components:
+ * 
+ * 1. Security Descriptor Policies: Using StSecGetSecurityDescriptor to find matching policies
+ * 2. Chamber Assignment: Determining which encryption chamber to use for the file
+ */
+// TODO GO OVER THIS AGAIN
+FLT_PREOP_CALLBACK_STATUS
+FCPreCreate(
+    PFLT_CALLBACK_DATA Data,
+    PCFLT_RELATED_OBJECTS FltObjects,
+    PVOID* CompletionContext
+)
+{
+    bool bVar1;
+    BOOLEAN isMobile;
+    BOOLEAN result;
+    NTSTATUS kernelStackStatus;
+    ULONG fileCreateOptionsHighByte;
+    ULONG newCreateOptions;
+    PFLT_FILE_NAME_INFORMATION fileNameInfoForLog;
+    PEVENT_DESCRIPTOR eventParam1;
+    PWCHAR chamberId = NULL;
+    PEVENT_DESCRIPTOR errorEventDescriptor;
+    BOOLEAN isAccessModified;
+    PVOID eventParam3;
+    FLT_PREOP_CALLBACK_STATUS return_status = FLT_PREOP_SUCCESS_WITH_CALLBACK;
+    PCUSTOM_FC_CREATE_CONTEXT lookasideListEntry = NULL;
+    ACCESS_MASK accessMask = 0;
+    BOOLEAN needsBackslash;
+    ushort totalPathLength;
+    PWCHAR chamberIdStr = NULL;
+    UNICODE_STRING chamberPath = {0, 0, NULL};
+    PFLT_FILE_NAME_INFORMATION fileNameInfo = NULL;
+    PNPAGED_LOOKASIDE_LIST securityDescriptor = NULL;
+    PCUSTOM_FC_VOLUME_CONTEXT volumeContext = NULL;
+    PWCHAR currentPathPosition;
+    PWCHAR fullPathBuffer;
+    CUSTOM_FC_CHAMBER_DATA chamberData;
+    ULONG fileCreateOptions;
+    PFLT_CALLBACK_DATA callbackData;
+    PWCHAR fileName = NULL;
+    ushort fileNameLength;
+    PFILE_OBJECT fileObject;
+    bool isChamberPathSet = false;
+    PFLT_FILE_NAME_INFORMATION pFileNameInformation;
+
+
+    chamberData.ChamberType = 0;
+    chamberData.Status = FltGetVolumeContext(FltObjects->Filter, FltObjects->Volume, (PFLT_CONTEXT*)volumeContext);
+
+    if (-1 < chamberData.Status)
+    {
+        fileObject = FltObjects->FileObject;
+        fileNameLength = fileObject->FileName.Length;
+
+        /* 1. (Data->Iopb->Parameters).Create.Options & 0x2000) == 0 => Checks that the
+         * FILE_OPEN_REPARSE_POINT bit is not set, meaning we're not trying to open a reparse point (wdm.h)
+         * [Reparse points are file system objects used to extend the attributes of a file system. Not all
+         * file systems support reparse points; for example, NTFS and ReFS support them, but the FAT file
+         * system doesn't.:]
+         * 
+         * 2. 2 < fileNameLength => The file name is greater than 2
+         * 
+         * 3. (fileObject->FileName).Buffer[(fileNameLength >> 1) - 1] == L'\\'
+         *  This checks if there's a backslash character at a specific position:
+         *  (fileNameLength >> 1) right-shifts the length by 1 bit because Windows filenames are stored as wide characters.
+         *  (fileNameLength >> 1) - 1 subtracts 1 to calculate the index of the last character in
+         * the filename.
+         *  == L'\\' checks if that character is a wide character backslash
+         */
+        if ((Data->Iopb->Parameters.Create.Options & 0x2000) == 0 &&
+            2 < fileNameLength &&
+            fileObject->FileName.Buffer[(fileNameLength >> 1) - 1] == L'\\'
+        )
+        {
+            /* This shortens the filename length by 2 bytes (which is 1 wide character). Since the code just
+               determined that the last character was a backslash (\), this effectively removes that trailing
+               backslash from the filename by adjusting the length field, without actually modifying the buffer
+                */
+            (fileObject->FileName).Length = fileNameLength - 2;
+        }
+
+        callbackData = Data;
+        chamberData.Status = FltGetFileNameInformation(
+            Data,
+            FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_DEFAULT,
+            &fileNameInfo
+        );
+
+        if (chamberData.Status < 0)
+        {
+            if (volumeContext->VerificationNeeded == FALSE)
+            {
+                chamberData.Status = 0;
+                chamberId = fileName;
+            }
+            else
+            {
+                chamberId = fileName;
+                if ((Microsoft_Windows_FileCryptEnableBits & 2) != 0)
+                {
+                    McTemplateK0d_EtwWriteTransfer(
+                        callbackData,
+                        &GetFileNameInformationFailure,
+                        fileNameInfo,
+                        chamberData.Status
+                    );
+                }
+            }
+        }
+        else
+        {
+            fileNameInfoForLog = fileNameInfo;
+            /* Parse file name components */
+            chamberData.Status = FltParseFileNameInformation(fileNameInfo);
+            pFileNameInformation = fileNameInfo;
+            if (chamberData.Status < 0)
+            {
+                chamberId = fileName;
+                if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
+                {
+                    McTemplateK0d_EtwWriteTransfer(
+                        fileNameInfoForLog,
+                        &ParseFileNameInformationFailure,
+                        fileNameInfo,
+                        chamberData.Status
+                    );
+                }
+            }
+            else
+            {
+                if ((fileNameInfo->ParentDir).Buffer == NULL)
+                {
+                    return_status = FLT_PREOP_SUCCESS_NO_CALLBACK;
+                    lookasideListEntry = NULL;
+
+                    goto FCPreCreate_cleanup;
+                }
+
+                currentPathPosition = NULL;
+                bVar1 = true;
+                needsBackslash = '\x01';
+                fileNameLength = (fileNameInfo->FinalComponent).Length;
+                totalPathLength = fileNameLength + 2 + (fileNameInfo->ParentDir).Length;
+
+                if ((fileNameLength != 0) &&
+                    ((fileNameInfo->FinalComponent).Buffer[(ulonglong)(fileNameLength >> 1) - 1] != L'\\'))
+                {
+                    totalPathLength = totalPathLength + 2;
+                    bVar1 = false;
+                    needsBackslash = '\0';
+                }
+
+                fileNameLength = totalPathLength;
+
+                /* Construct full path for security checks */
+                fullPathBuffer = ExAllocatePool2(0x100, totalPathLength, POOL_TAG_FCnf);
+
+                if (fullPathBuffer == NULL)
+                {
+                    chamberData.Status = STATUS_INSUFFICIENT_RESOURCES;
+                    if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
+                    {
+                        errorEventDescriptor = &ConstructFullPathFailure;
+                        chamberData.Status = STATUS_INSUFFICIENT_RESOURCES;
+                    FCPreCreate_log_before_return:
+                        McTemplateK0d_EtwWriteTransfer(0x100, errorEventDescriptor, POOL_TAG_FCnf,
+                                                       chamberData.Status);
+                    }
+                }
+                else
+                {
+                    // chamberPath = (UNICODE_STRING)CONCAT88(fullPathBuffer, chamberPath._0_8_);
+                    // chamberPath._4_12_ =
+                    //     SUB1612((undefined [16])chamberPath >> 0x20, 0) &
+                    //     SUB1612((undefined [16])0xffffffffffffffff >> 0x10, 0);
+                    // chamberPath = (UNICODE_STRING)(ZEXT1416(CONCAT122(chamberPath._4_12_, fileNameLength)) << 0x10);
+                    chamberPath.Length = fileNameLength;
+                    chamberPath.MaximumLength = fileNameLength;
+                    chamberPath.Buffer = fullPathBuffer;
+
+                    currentPathPosition = fullPathBuffer;
+
+                    memcpy(
+                        fullPathBuffer,
+                        (pFileNameInformation->ParentDir).Buffer,
+                        pFileNameInformation->ParentDir.Length
+                    );
+
+                    fileName = fullPathBuffer + ((pFileNameInformation->ParentDir).Length >> 1);
+                    currentPathPosition = fileName;
+
+                    memcpy(
+                        fileName,
+                        (pFileNameInformation->FinalComponent).Buffer,
+                        pFileNameInformation->FinalComponent.Length
+                    );
+                    currentPathPosition = fileName + ((pFileNameInformation->FinalComponent).Length >> 1);
+                    if (!bVar1)
+                    {
+                        *currentPathPosition = L'\\';
+                        currentPathPosition = currentPathPosition + 1;
+                    }
+
+                    chamberData.Status = STATUS_SUCCESS;
+                    *currentPathPosition = L'\0';
+                    isChamberPathSet = true;
+
+                    // chamberPath = (UNICODE_STRING)CONCAT142(chamberPath._2_14_, fileNameLength - 2);
+                    // chamberData._16_16_ = ZEXT816(0);
+                    // chamberData._0_16_ = ZEXT816(&chamberPath);
+                    chamberPath.Length = fileNameLength - 2;
+                    chamberData.ChamberId = NULL;
+                    chamberData.ChamberType = 0;
+                    chamberData.InputPath = &chamberPath;
+                    chamberData.SecurityDescriptor = NULL;
+
+                    kernelStackStatus = KeExpandKernelStackAndCalloutEx(
+                        FCpObtainSecurityInfoCallout,
+                        &chamberData,
+                        0x3000,
+                        0,
+                        0
+                    );
+
+                    /* If KeExpandKernelStackAndCalloutEx does not succeed, try do find the chamber and the security
+                     * descriptor here now */
+                    if (kernelStackStatus < 0)
+                    {
+                        fullPathBuffer = NULL;
+                        chamberIdStr = NULL;
+                        chamberId = NULL;
+                        if (chamberPath.Length != 0)
+                        {
+                            /* Get security descriptor and chamber ID for this path */
+                            chamberData.Status = StSecGetSecurityDescriptor(
+                                &chamberPath,
+                                securityDescriptor,
+                                &chamberIdStr,
+                                &accessMask
+                            );
+                            chamberId = chamberIdStr;
+                            chamberData.ChamberType = accessMask;
+
+                            /* If no chamber ID explicitly found, check for default chambers */
+                            if ((chamberData.Status < 0) || (chamberIdStr != NULL))
+                            {
+                                if ((chamberData.Status < 0) && ((Microsoft_Windows_FileCryptEnableBits & 1) != 0))
+                                {
+                                    McTemplateK0d_EtwWriteTransfer(&chamberPath, &GetSecurityDescriptorFailure,
+                                                                   &chamberIdStr, chamberData.Status);
+
+                                    chamberData.ChamberType = accessMask;
+                                }
+                            }
+                            else
+                            {
+                                if ((gFCFlags & EncryptAllFlagBit) == 0)
+                                {
+                                    if ((gFCFlags & EncryptMediaFlagBit) != 0)
+                                    {
+                                        /* Check if path is in Music/Pictures/Videos special folders */
+                                        result = RtlPrefixUnicodeString(&gMusicPath, &chamberPath, '\x01');
+
+                                        /* Not Music chamber */
+                                        if (result == '\0')
+                                        {
+                                            result = RtlPrefixUnicodeString(&gPicturesPath, &chamberPath, '\x01');
+
+                                            /* If Not Pictures chamber */
+                                            if (result == '\0')
+                                            {
+                                                result = RtlPrefixUnicodeString(&gVideosPath, &chamberPath, '\x01');
+                                                chamberIdStr = L"VideosChamber";
+
+                                                /* Not Videos chamber */
+                                                if (result == '\0')
+                                                {
+                                                    chamberIdStr = chamberId;
+                                                }
+                                            }
+                                            else
+                                            {
+                                                chamberIdStr = L"PicturesChamber";
+                                            }
+                                        }
+                                        else
+                                        {
+                                            chamberIdStr = L"MusicChamber";
+                                        }
+                                        chamberData.ChamberType = 1;
+                                        accessMask = 1;
+                                        chamberId = chamberIdStr;
+                                    }
+                                }
+                                else
+                                {
+                                    /* If EncryptAll is ON, use global chamber */
+                                    chamberIdStr = L"{0b7992da-c5e6-41e3-b24f-55419b997a15}";
+                                    chamberData.ChamberType = 1;
+                                    accessMask = 1;
+                                    chamberId = L"{0b7992da-c5e6-41e3-b24f-55419b997a15}";
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        /* If KeExpandKernelStackAndCalloutEx succeeds */
+                        securityDescriptor = chamberData.SecurityDescriptor;
+                        chamberIdStr = chamberData.ChamberId;
+                        accessMask = chamberData.ChamberType;
+                        chamberId = chamberData.ChamberId;
+                    }
+                    if (-1 < chamberData.Status)
+                    {
+                        chamberData.Status = STATUS_SUCCESS;
+                        if (volumeContext->VerificationNeeded == FALSE)
+                        {
+                        FCPreCreate_access_not_modified:
+                            isAccessModified = FALSE;
+                        }
+                        else
+                        {
+                            callbackData = Data;
+                            eventParam1 = securityDescriptor;
+                            chamberData.Status = FCpAccessCheck(Data, securityDescriptor, &accessMask);
+
+                            if (-1 < chamberData.Status)
+                            {
+                                goto FCPreCreate_access_not_modified;
+                            }
+
+                            /* If access denied, adjust access or block operation */
+                            if (chamberData.Status == STATUS_ACCESS_DENIED)
+                            {
+                                eventParam1 = fileCreateOptions;
+                                eventParam3 = (PVOID)(ulonglong)(fileCreateOptions & 0xffffff);
+
+                                fileCreateOptions = (Data->Iopb->Parameters).Create.Options;
+                                fileCreateOptionsHighByte = fileCreateOptions >> 0x18;
+                                callbackData = fileCreateOptionsHighByte;
+
+                                /* Check if we can adjust the operation to make it succeed */
+                                if ((fileCreateOptionsHighByte - 3 & 0xfffffffd) != 0)
+                                {
+                                    if ((fileCreateOptionsHighByte == 2) && ((fileCreateOptions & 1) != 0))
+                                    {
+                                        /* Object Name already exists */
+                                        chamberData.Status = STATUS_OBJECT_NAME_COLLISION;
+                                        goto FCPreCreate_return_no_post_op;
+                                    }
+                                    goto FCPreCreate_access_not_modified_2;
+                                }
+                                newCreateOptions = FILE_OVERWRITE;
+                                if (fileCreateOptionsHighByte != 5)
+                                {
+                                    newCreateOptions = FILE_OPEN;
+                                }
+                                /* Setting the high 8 bits which contain the CreateOptions flags
+                                   See fltKernel.h _FLT_PARAMETERS */
+                                (Data->Iopb->Parameters).Create.Options =
+                                    newCreateOptions << 0x18 | fileCreateOptions & 0xffffff;
+
+                                eventParam3 = &accessMask;
+                                eventParam1 = securityDescriptor;
+
+                                /* Try access check again with modified options */
+                                chamberData.Status = FCpAccessCheck(Data, securityDescriptor, &accessMask);
+
+                                if (chamberData.Status != 0)
+                                {
+                                    goto FCPreCreate_access_not_modified_2;
+                                }
+
+                                isAccessModified = '\x01';
+                                /* Mark the data as modified
+                                   
+                                   This section (above) did the following:
+                                   1. Perform an access check using the security descriptor
+                                   2. If access is denied, it tries to modify the operation (changing create disposition) to make it
+                                   succeed
+                                   3. If the modified operation is allowed, it marks the callback data as modified
+                                   4. Otherwise, it denies the operation */
+                                FltSetCallbackDataDirty(Data);
+                            }
+                            else
+                            {
+                            FCPreCreate_access_not_modified_2:
+                                isAccessModified = '\0';
+                            }
+                            if (chamberData.Status < 0)
+                            {
+                                if ((Microsoft_Windows_FileCryptEnableBits & 2) != 0)
+                                {
+                                    McTemplateK0zd_EtwWriteTransfer(
+                                        Data, eventParam1, eventParam3, chamberPath.Buffer, chamberData.Status);
+                                }
+                                goto FCPreCreate_return_no_post_op;
+                            }
+                        }
+                        isMobile = FsRtlIsMobileOS();
+                        if (isMobile == '\0')
+                        {
+                            /* For desktop OS, just set privileged mode flag SPECIAL_ENCRYPTED_OPEN on AccessState's flags */
+                            if (chamberData.ChamberType - 1 < 2)
+                            {
+                                eventParam3 = ((Data->Iopb->Parameters).Create.SecurityContext)->AccessState;
+                                (((Data->Iopb->Parameters).Create.SecurityContext)->AccessState->Flags) =
+                                    (((Data->Iopb->Parameters).Create.SecurityContext)->AccessState->Flags) |
+                                    SPECIAL_ENCRYPTED_OPEN;
+                            }
+                            if (chamberId != NULL)
+                            {
+                                /* Free chamber ID and return without completion context */
+                                FCpFreeChamberId(chamberId);
+                                chamberIdStr = NULL;
+                                *CompletionContext = NULL;
+                                return_status = FLT_PREOP_SUCCESS_WITH_CALLBACK;
+                                chamberId = NULL;
+                                goto FCPreCreate_cleanup;
+                            }
+                        }
+                        else if (chamberId != NULL)
+                        {
+                            /* For mobile OS, create a completion context to pass to post-operation */
+                            eventParam1 = &gPre2PostCreateContextList;
+
+                            lookasideListEntry = ExAllocateFromNPagedLookasideList(&gPre2PostCreateContextList);
+
+                            if (lookasideListEntry == NULL)
+                            {
+                                chamberData.Status = STATUS_BAD_INITIAL_STACK;
+                                if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
+                                {
+                                    McTemplateK0d_EtwWriteTransfer(
+                                        eventParam1, &AllocationFailure, eventParam3, 0xc000009a);
+                                }
+
+                                return_status = FLT_PREOP_SUCCESS_WITH_CALLBACK;
+                                goto FCPreCreate_cleanup;
+                            }
+                            lookasideListEntry->ChamberId = chamberId;
+                            lookasideListEntry->ChamberType = chamberData.ChamberType;
+                            lookasideListEntry->IsAccessModified = isAccessModified;
+                        }
+                        *CompletionContext = lookasideListEntry;
+                        goto FCPreCreate_cleanup;
+                    }
+                    isChamberPathSet = true;
+                    if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
+                    {
+                        errorEventDescriptor = &ObtainSdAndChamberIdFailure;
+                        isChamberPathSet = true;
+
+                        goto FCPreCreate_log_before_return;
+                    }
+                }
+            }
+        }
+    }
+FCPreCreate_return_no_post_op:
+    /* Only way to get here is with a goto after some sort of failure.
+       The return status will be changed later to FLT_PREOP_COMPLETE. */
+    return_status = FLT_PREOP_SUCCESS_WITH_CALLBACK;
+    lookasideListEntry = NULL;
+FCPreCreate_cleanup:
+    if (volumeContext != NULL)
+    {
+        FltReleaseContext(volumeContext);
+    }
+    if (fileNameInfo != NULL)
+    {
+        FltReleaseFileNameInformation(fileNameInfo);
+    }
+    if (isChamberPathSet)
+    {
+        ExFreePoolWithTag(chamberPath.Buffer, POOL_TAG_FCnf);
+        //chamberPath = (UNICODE_STRING)((undefined [16])chamberPath & (undefined [16])0xffffffff00000000);
+        chamberPath.Length = 0;
+        chamberPath.MaximumLength = 0;
+    }
+    eventParam1 = securityDescriptor;
+    if (securityDescriptor != NULL)
+    {
+        ExFreePoolWithTag(securityDescriptor, POOL_TAG_STsp);
+    }
+    if (chamberData.Status < 0)
+    {
+        if (chamberId != NULL)
+        {
+            FCpFreeChamberId(chamberId);
+            eventParam1 = chamberId;
+        }
+        if (lookasideListEntry != NULL)
+        {
+            eventParam1 = &gPre2PostCreateContextList;
+            ExFreeToNPagedLookasideList(&gPre2PostCreateContextList, lookasideListEntry);
+        }
+        /* Returning FLT_PREOP_COMPLETE must be accompanied with an IoStatus set */
+        (Data->IoStatus).Status = chamberData.Status;
+        (Data->IoStatus).Information = 0;
+        /* When this routine returns FLT_PREOP_COMPLETE, FltMgr won't send the I/O operation to any
+           minifilter drivers below the caller in the driver stack or to the file system. In this case,
+           FltMgr only calls the post-operation callback routines of the minifilter drivers above the caller
+           in the driver stack. */
+        return_status = FLT_PREOP_COMPLETE;
+
+        if ((Microsoft_Windows_FileCryptEnableBits & 2) != 0)
+        {
+            McTemplateK0d_EtwWriteTransfer(eventParam1, &PreCreateFailure, eventParam3, chamberData.Status);
+        }
+    }
+
+    return return_status;
+}
+
+
+/* This function:
+ * 
+ * 1. Determins if the file being read is encrypted
+ * 2. Sets up the necessary context for decryption
+ * 3. Decides whether a post-operation callback is needed
+ */
+FLT_PREOP_CALLBACK_STATUS
+FCPreRead(
+    PFLT_CALLBACK_DATA CallbackData,
+    PCFLT_RELATED_OBJECTS FltObjects,
+    PVOID* CompletionContext
+)
+{
+    NTSTATUS status;
+    PCUSTOM_FC_READ_CONTEXT lookasideListEntry = NULL;
+    PVOID eventParam = NULL;
+    FLT_PREOP_CALLBACK_STATUS return_status;
+    PFLT_CONTEXT* contextSetter;
+    PCUSTOM_FC_VOLUME_CONTEXT volumeContext = NULL;
+    PCUSTOM_FC_STREAM_CONTEXT streamContext = NULL;
+    ULONG readLength = (CallbackData->Iopb->Parameters).Read.Length;
+
+    status = FltGetStreamContext(FltObjects->Instance, FltObjects->FileObject, streamContext);
+
+    /* The condition checks if either the FltGetStreamContext has failed, the files was opened for
+     * asynchronous I/O, or that the length is zero */
+    if (
+        status < 0 ||
+        (FltObjects->FileObject != NULL && (FltObjects->FileObject->Flags >> 8 & 1) != 0 || readLength == 0)
+    )
+    {
+        return_status = FLT_PREOP_SUCCESS_NO_CALLBACK;
+        goto FCPreRead_cleanup_and_return;
+    }
+
+    status = FltGetVolumeContext(FltObjects->Filter, FltObjects->Volume, volumeContext);
+
+    if (status < 0)
+    {
+        if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
+        {
+            McTemplateK0d_EtwWriteTransfer(FltObjects->Filter, &GetVolumeContextFailure, volumeContext, status);
+        }
+    }
+    else
+    {
+        /* To prepare for the actual decryption that will occur in the post-read operation, setup the contexts: */
+        lookasideListEntry = ExAllocateFromNPagedLookasideList(&gPre2PostIoContextList);
+
+        if (lookasideListEntry == NULL)
+        {
+            status = STATUS_INSUFFICIENT_RESOURCES;
+            return_status = FLT_PREOP_COMPLETE;
+
+            if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
+            {
+                McTemplateK0d_EtwWriteTransfer(
+                    &gPre2PostIoContextList, &AllocationFailure, contextSetter, STATUS_INSUFFICIENT_RESOURCES);
+            }
+            goto FCPreRead_cleanup_and_return;
+        }
+        eventParam = CallbackData;
+        /* Sets up zeroing offset, this is important for security, as it ensures that sensitive data buffers
+           are properly zeroed out after use to prevent data leakage */
+        status = FltSetFsZeroingOffsetRequired(CallbackData);
+        if (-1 < status)
+        {
+            eventParam = CallbackData;
+
+            FltSetCallbackDataDirty(CallbackData);
+
+            lookasideListEntry->VolumeContext = volumeContext;
+            lookasideListEntry->StreamContext = streamContext;
+            *CompletionContext = lookasideListEntry;
+
+            return_status = FLT_PREOP_SUCCESS_WITH_CALLBACK;
+
+            goto FCPreRead_cleanup_and_return;
+        }
+    }
+    return_status = FLT_PREOP_COMPLETE;
+FCPreRead_cleanup_and_return:
+    if (return_status != FLT_PREOP_SUCCESS_WITH_CALLBACK)
+    {
+        if (lookasideListEntry != NULL)
+        {
+            ExFreeToNPagedLookasideList(&gPre2PostIoContextList, lookasideListEntry);
+        }
+        if (volumeContext != NULL)
+        {
+            FltReleaseContext(volumeContext);
+        }
+        eventParam = streamContext;
+        if (streamContext != NULL)
+        {
+            FltReleaseContext(streamContext);
+        }
+    }
+
+    if (return_status == FLT_PREOP_COMPLETE)
+    {
+        (CallbackData->IoStatus).Status = status;
+        (CallbackData->IoStatus).Information = 0;
+    }
+
+    if ((status < 0) && ((Microsoft_Windows_FileCryptEnableBits & 2) != 0))
+    {
+        McTemplateK0d_EtwWriteTransfer(eventParam, &PreReadFailure, contextSetter, status);
+    }
+
+    return return_status;
+}
+
+
+/* This function checks for the existence of a special marker file on a volume to determine if the
+ * volume has been "paired" with a Windows application */
+NTSTATUS
+FCpRetrieveAppPairingId(
+    PCFLT_RELATED_OBJECTS FltObjects
+)
+{
+    NTSTATUS return_status;
+    NTSTATUS strAppendStatus;
+    NTSTATUS status;
+    ULONG volumeNameLength = 0;
+    UNICODE_STRING volumeName = {0, 0, NULL};
+    PFILE_OBJECT fileObject = NULL;
+    HANDLE fileHandle = NULL;
+    LARGE_INTEGER byteOffset;
+    byteOffset.QuadPart = 0;
+    OBJECT_ATTRIBUTES objectAttributes;
+    IO_STATUS_BLOCK ioStatusBlock = {0, 0};
+    PVOID fileBuffer;
+    bool fileInUse = false;
+
+    status = FltGetVolumeName(FltObjects->Volume, NULL, &volumeNameLength);
+
+    if (status == STATUS_BUFFER_TOO_SMALL)
+    {
+        volumeNameLength = volumeNameLength + 0x5c;
+        volumeName.Buffer = ExAllocatePool2(0x100, volumeNameLength, POOL_TAG_FCnv);
+
+        if (volumeName.Buffer != NULL)
+        {
+            // volumeName._0_4_ = CONCAT22((undefined2)volumeNameLength, volumeName.Length);
+            // volumeName._0_8_ = volumeName._0_8_ & 0xffffffff00000000 | (ulonglong)volumeName._0_4_;
+            volumeName.MaximumLength = volumeNameLength;
+
+            status = FltGetVolumeName(FltObjects->Volume, &volumeName,NULL);
+
+            if ((-1 < status) &&
+                (strAppendStatus =
+                    RtlAppendUnicodeToString(&volumeName, L"\\System Volume Information\\WPAppSettings.dat"),
+                    -1 < strAppendStatus))
+            {
+                // objectAttributes._0_16_ = CONCAT124(objectAttributes._4_12_, 0x30);
+                // objectAttributes._0_16_ = objectAttributes._0_16_ & (undefined [16])0xffffffffffffffff;
+                // objectAttributes._32_16_ = ZEXT816(0);
+                InitializeObjectAttributes(
+                    &objectAttributes,
+                    NULL,
+                    0,
+                    NULL,
+                    NULL
+                )
+
+                status = FltCreateFileEx(
+                    FltObjects->Filter,
+                    FltObjects->Instance,
+                    &fileHandle,
+                    &fileObject,
+                    FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES | FILE_READ_EA | FILE_READ_DATA | FILE_LIST_DIRECTORY,
+                    &objectAttributes,
+                    &ioStatusBlock,
+                    NULL,
+                    0,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                    1,
+                    FILE_NON_DIRECTORY_FILE,
+                    NULL,
+                    0,
+                    0
+                );
+
+                if (-1 < status)
+                {
+                    /* If the file exists, it reads a small amount of data (20 bytes) */
+                    status = FltReadFile(
+                        FltObjects->Instance,
+                        fileObject,
+                        &byteOffset,
+                        0x14,
+                        &fileBuffer,
+                        0,
+                        NULL,
+                        NULL,
+                        NULL
+                    );
+
+                    fileInUse = true;
+                }
+            }
+        }
+    }
+
+    if (volumeName.Buffer != NULL)
+    {
+        ExFreePoolWithTag(volumeName.Buffer, POOL_TAG_FCnv);
+        volumeName.Buffer = NULL;
+    }
+    if (fileObject != NULL)
+    {
+        ObfDereferenceObject(fileObject);
+        fileObject = NULL;
+    }
+    if (fileInUse)
+    {
+        FltClose(fileHandle);
+    }
+
+    return return_status;
+}
+
+// TODO
+FLT_PREOP_CALLBACK_STATUS
+FCPreWrite(
+    PFLT_CALLBACK_DATA CallbackData,
+    PCFLT_RELATED_OBJECTS FltObjects,
+    PVOID* CompletionContext
+)
+{
+    UCHAR allocationType;
+    NTSTATUS ioStatus;
+    PUCHAR ciphertext;
+    PMDL mdl;
+    PVOID setter;
+    CUSTOM_FC_WRITE_CONTEXT* lookasideEntry;
+    PNPAGED_LOOKASIDE_LIST shadowBufferPtr;
+    NPAGED_LOOKASIDE_LIST* generalPtr;
+    EVENT_DESCRIPTOR* eventDescriptor;
+    uint totalSizeToEncrypt;
+    FLT_PREOP_CALLBACK_STATUS return_status;
+    UCHAR allocationTypeCopy;
+    CUSTOM_FC_VOLUME_CONTEXT* volumeContext;
+    ULONG writeLength;
+    CUSTOM_FC_STREAM_CONTEXT* streamContext;
+    PFLT_IO_PARAMETER_BLOCK ioqb;
+    PUCHAR plaintext;
+    PVOID unknown1;
+    PVOID unknown2;
+    PVOID unknown3;
+
+    /* This function intercepts write operations before they reach the disk.
+       It performs encryption on the fly without application awareness.
+       It replaces the original write buffer with an encrypted version, making the File System write
+       encrypted data to disk. */
+    ioqb = CallbackData->Iopb;
+    return_status = FLT_PREOP_SUCCESS_NO_CALLBACK;
+    ciphertext = NULL;
+    unknown1 = NULL;
+    mdl = NULL;
+    unknown2 = NULL;
+    volumeContext = NULL;
+    streamContext = NULL;
+    lookasideEntry = NULL;
+    unknown3 = NULL;
+    writeLength = (ioqb->Parameters).Read.Length;
+    setter = &streamContext;
+    generalPtr = (NPAGED_LOOKASIDE_LIST*)FltObjects->Instance;
+    ioStatus = FltGetStreamContext((PFLT_INSTANCE)generalPtr, FltObjects->FileObject, (PFLT_CONTEXT*)setter);
+    allocationTypeCopy = '\0';
+    /* The function exits early if:
+       
+       Stream context retrieval failed (file isn't encrypted)
+       The FO_ASYNC_IO flag is set (asynchronous I/O)
+       The write length is zero (nothing to encrypt) */
+    if ((ioStatus < 0) || ((FltObjects->FileObject != NULL && ((FltObjects->FileObject->Flags >> 8 & 1) != 0))))
+    {
+        return_status = FLT_PREOP_SUCCESS_NO_CALLBACK;
+        goto FCPreWrite_cleanup_and_return;
+    }
+    if (writeLength == 0) goto FCPreWrite_cleanup_and_return;
+    setter = &volumeContext;
+    generalPtr = (NPAGED_LOOKASIDE_LIST*)FltObjects->Filter;
+    ioStatus = FltGetVolumeContext((PFLT_FILTER)generalPtr, FltObjects->Volume, (PFLT_CONTEXT*)setter);
+    if (ioStatus < 0)
+    {
+        if ((_Microsoft_Windows_FileCryptEnableBits & 1) != 0)
+        {
+            McTemplateK0d_EtwWriteTransfer(generalPtr, &GetVolumeContextFailure, setter, ioStatus);
+        }
+        return_status = FLT_PREOP_COMPLETE;
+        goto FCPreWrite_cleanup_and_return;
+    }
+    /* This calculation rounds up the write size to a multiple of the sector size, which is necessary
+       for block cipher encryption */
+    totalSizeToEncrypt = (writeLength - 1) + volumeContext->SectorSize & -volumeContext->SectorSize;
+    if (totalSizeToEncrypt < 0x10001)
+    {
+        /* For small writes (< 64KB), allocate from lookaside list */
+        shadowBufferPtr = &gShadowBufferList;
+        ciphertext = (PUCHAR)ExAllocateFromNPagedLookasideList((PNPAGED_LOOKASIDE_LIST)&gShadowBufferList);
+        allocationType = '\x01';
+        generalPtr = shadowBufferPtr;
+    }
+    else
+    {
+        /* For large writes, allocate from pool */
+        generalPtr = (NPAGED_LOOKASIDE_LIST*)0x40;
+        setter = (CUSTOM_FC_VOLUME_CONTEXT**)0x62734346;
+        ciphertext = (PUCHAR)ExAllocatePool2(0x40, (ulonglong)totalSizeToEncrypt, 0x62734346);
+        allocationType = '\x02';
+    }
+    unknown1 = ciphertext;
+    if ((PFLT_CALLBACK_DATA)ciphertext == NULL)
+    {
+    FCPreWrite_set_allocation_failure_status:
+        /* STATUS_INSUFFICIENT_RESOURCES */
+        ioStatus = -0x3fffff66;
+        return_status = FLT_PREOP_COMPLETE;
+        if ((_Microsoft_Windows_FileCryptEnableBits & 1) == 0) goto FCPreWrite_cleanup_and_return;
+        eventDescriptor = &AllocationFailure;
+    }
+    else
+    {
+        setter = NULL;
+        generalPtr = (NPAGED_LOOKASIDE_LIST*)ciphertext;
+        /* this is a call to IoAllocateMdl
+           
+           When the driver intercepts a write operation, it needs to replace the original plaintext data
+           with encrypted data. The original data might be described by an MDL (if present) or direct
+           buffer. By creating a new MDL for the encrypted buffer, the driver can redirect the I/O operation
+           to use the encrypted data instead. */
+        mdl = (PMDL)(*(code*)0xa8fc)(ciphertext, totalSizeToEncrypt, 0, 0, 0);
+        unknown2 = mdl;
+        allocationTypeCopy = allocationType;
+        if (mdl == NULL) goto FCPreWrite_set_allocation_failure_status;
+        /* This is a call to MmBuildMdlForNonPagedPool */
+        (*(code*)0xa8c8)(mdl);
+        /* This is a call to MmProbeAndLockPages */
+        (*(code*)0xa996)(mdl, 1);
+        generalPtr = (NPAGED_LOOKASIDE_LIST*)(ioqb->Parameters).QueryEa.MdlAddress;
+        if ((PFLT_CALLBACK_DATA)generalPtr == NULL)
+        {
+            plaintext = (PUCHAR)(ioqb->Parameters).LockControl.ProcessId;
+        FCPreWrite_encrypt:
+            setter = plaintext;
+            ioStatus = FCpEncEncrypt(&volumeContext->BcryptAlgHandle, &streamContext->KeyData, plaintext, ciphertext,
+                                     totalSizeToEncrypt, (PUCHAR)(ioqb->Parameters).QueryOpen.Length);
+            generalPtr = &gPre2PostIoContextList;
+            lookasideEntry =
+                (CUSTOM_FC_WRITE_CONTEXT*)ExAllocateFromNPagedLookasideList(
+                    (PNPAGED_LOOKASIDE_LIST)&gPre2PostIoContextList);
+            unknown3 = lookasideEntry;
+            if (lookasideEntry != NULL)
+            {
+                /* Replace original write buffer with encrypted buffer */
+                (ioqb->Parameters).Create.EaBuffer = ciphertext;
+                (ioqb->Parameters).QueryQuota.QuotaBuffer = mdl;
+                generalPtr = (NPAGED_LOOKASIDE_LIST*)CallbackData;
+                /* Mark callback data as modified */
+                FltSetCallbackDataDirty(CallbackData);
+                /*  Set up completion context */
+                lookasideEntry->Ciphertext = ciphertext;
+                lookasideEntry->AllocationType = allocationType;
+                lookasideEntry->VolumeContext = volumeContext;
+                lookasideEntry->StreamContext = streamContext;
+                *CompletionContext = lookasideEntry;
+                return_status = FLT_PREOP_SUCCESS_WITH_CALLBACK;
+                goto FCPreWrite_cleanup_and_return;
+            }
+            goto FCPreWrite_set_allocation_failure_status;
+        }
+        if ((*(byte*)((longlong)&((PFLT_CALLBACK_DATA)generalPtr)->Thread + 2) & 5) == 0)
+        {
+            /* Map MDL to get virtual address */
+            setter = MmMapLockedPagesSpecifyCache((PMDLX)generalPtr, '\0', MmCached,NULL, 0,
+                                                  ExDefaultMdlProtection | 0x40000010);
+        }
+        else
+        {
+            setter = *(PVOID*)&(((PFLT_CALLBACK_DATA)generalPtr)->IoStatus).field0_0x0.Status;
+        }
+        plaintext = (PUCHAR)setter;
+        if ((CUSTOM_FC_VOLUME_CONTEXT**)setter != NULL) goto FCPreWrite_encrypt;
+        ioStatus = -0x3fffff66;
+        return_status = FLT_PREOP_COMPLETE;
+        if ((_Microsoft_Windows_FileCryptEnableBits & 1) == 0) goto FCPreWrite_cleanup_and_return;
+        eventDescriptor = &GetSystemAddressFailure;
+    }
+    return_status = FLT_PREOP_COMPLETE;
+    ioStatus = -0x3fffff66;
+    McTemplateK0d_EtwWriteTransfer(generalPtr, eventDescriptor, setter, 0xc000009a);
+FCPreWrite_cleanup_and_return:
+    if (return_status != FLT_PREOP_SUCCESS_WITH_CALLBACK)
+    {
+        if ((PFLT_CALLBACK_DATA)ciphertext != NULL)
+        {
+            setter = (PVOID)((ulonglong)setter & 0xffffffffffffff00 | (ulonglong)allocationTypeCopy);
+            FCFreeShadowBuffer(generalPtr, ciphertext, allocationTypeCopy);
+        }
+        if (mdl != NULL)
+        {
+            IoFreeMdl(mdl);
+        }
+        if (volumeContext != NULL)
+        {
+            FltReleaseContext(volumeContext);
+        }
+        if (streamContext != NULL)
+        {
+            FltReleaseContext(streamContext);
+        }
+        if (lookasideEntry != NULL)
+        {
+            ExFreeToNPagedLookasideList((PNPAGED_LOOKASIDE_LIST)&gPre2PostIoContextList, lookasideEntry);
+        }
+    }
+    if (return_status == FLT_PREOP_COMPLETE)
+    {
+        (CallbackData->IoStatus).field0_0x0.Status = ioStatus;
+        (CallbackData->IoStatus).Information = 0;
+        if ((_Microsoft_Windows_FileCryptEnableBits & 2) != 0)
+        {
+            McTemplateK0d_EtwWriteTransfer((ulonglong)_Microsoft_Windows_FileCryptEnableBits, &PreWriteFailure, setter,
+                                           ioStatus);
+        }
+    }
+    return return_status;
+}
+
+
+/* WARNING: Could not reconcile some variable overlaps */
+
+NTSTATUS
+FCReadDriverParameters(
+    PUNICODE_STRING PRegistryPath
+)
+{
+    NTSTATUS status;
+    ULONG resultLength = 0;
+    HANDLE keyHandle = NULL;
+    UNICODE_STRING registryValueName = {0, 0, NULL};
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    KEY_VALUE_PARTIAL_INFORMATION keyValueInfo;
+
+    // ObjectAttributes._0_16_ = CONCAT124(SUB1612(ZEXT816(0) >> 0x20, 0), 0x30);
+    // ObjectAttributes._0_16_ = ObjectAttributes._0_16_ & (undefined [16])0xffffffffffffffff;
+    // ObjectAttributes._16_16_ = ZEXT1216(CONCAT48(0x240, PRegistryPath));
+    // ObjectAttributes._32_16_ = ZEXT816(0);
+    InitializeObjectAttributes(
+        &ObjectAttributes,
+        PRegistryPath,
+        OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+        NULL,
+        NULL
+    )
+
+    status = ZwOpenKey(&keyHandle, 0x20019, &ObjectAttributes);
+
+    if (-1 < status)
+    {
+        /* If debug */
+        if (FcDebugTraceLevel == 0)
+        {
+            RtlInitUnicodeString(&registryValueName, L"DebugTraceLevel");
+            status = ZwQueryValueKey(
+                keyHandle,
+                &registryValueName,
+                KeyValuePartialInformation,
+                &keyValueInfo,
+                0x14,
+                &resultLength
+            );
+
+            if (-1 < status)
+            {
+                /* The 4-byte value in the Data field (4 offest from the 12th byte) is a DWORD that contains the
+                 * actual registry value */
+
+                // TODO READ 4 BYTES 
+                FcDebugTraceLevel = keyValueInfo.Data[0];
+            }
+        }
+        RtlInitUnicodeString(&registryValueName, L"EncryptMedia");
+        status = ZwQueryValueKey(
+            keyHandle,
+            &registryValueName,
+            KeyValuePartialInformation,
+            &keyValueInfo,
+            0x14,
+            &resultLength
+        );
+
+        if (-1 < status)
+        {
+            // TODO READ 4 BYTES 
+            if (keyValueInfo._12_4_ == 0)
+            {
+                gFCFlags = gFCFlags & 0xfffffffd;
+            }
+            else
+            {
+                gFCFlags = gFCFlags | EncryptMediaFlagBit;
+            }
+        }
+        RtlInitUnicodeString(&registryValueName, L"EncryptAll");
+        status = ZwQueryValueKey(
+            keyHandle,
+            &registryValueName,
+            KeyValuePartialInformation,
+            &keyValueInfo,
+            0x14
+            , &resultLength
+        );
+
+        if (-1 < status)
+        {
+            // TODO READ 4 BYTES 
+            if (keyValueInfo._12_4_ == 0)
+            {
+                gFCFlags = gFCFlags & 0xfffffffb;
+            }
+            else
+            {
+                gFCFlags = gFCFlags | EncryptAllFlagBit;
+            }
+        }
+        RtlInitUnicodeString(&registryValueName, L"BypassAccessChecks");
+        status = ZwQueryValueKey(
+            keyHandle,
+            &registryValueName,
+            KeyValuePartialInformation,
+            &keyValueInfo,
+            0x14,
+            &resultLength
+        );
+
+        if (-1 < status)
+        {
+            // TODO READ 4 BYTES 
+            if (keyValueInfo._12_4_ == 0)
+            {
+                gFCFlags = gFCFlags & 0xffffffef;
+            }
+            else
+            {
+                gFCFlags = gFCFlags | BypassAccessChecksFlagBit;
+            }
+        }
+        RtlInitUnicodeString(&registryValueName, L"FilterEmulatedExternalDrive");
+        status = ZwQueryValueKey(
+            keyHandle,
+            &registryValueName,
+            KeyValuePartialInformation,
+            &keyValueInfo,
+            0x14,
+            &resultLength
+        );
+
+        if (-1 < status)
+        {
+            // TODO READ 4 BYTES 
+            if (keyValueInfo._12_4_ == 0)
+            {
+                gFCFlags = gFCFlags & 0xfffffff7;
+            }
+            else
+            {
+                gFCFlags = gFCFlags | FilterEmulatedExternalDriveFlagBit;
+            }
+        }
+    }
+
+    if (keyHandle != NULL)
+    {
+        ZwClose(keyHandle);
+    }
+
+    return status;
+}
+
+
+const FLT_OPERATION_REGISTRATION Callbacks[] = {
+    {
+        IRP_MJ_CREATE,
+        0,
+        FCPreCreate,
+        FCPostCreate
+    },
+    {
+        IRP_MJ_OPERATION_END,
+        0,
+        NULL,
+        NULL
+    }
+};
+
+const FLT_OPERATION_REGISTRATION CallbacksMobile[] = {
+    {
+        IRP_MJ_CREATE,
+        0,
+        FCPreCreate,
+        FCPostCreate
+    },
+    {
+        IRP_MJ_READ,
+        0,
+        FCPreRead,
+        FCPostRead
+    },
+    {
+        IRP_MJ_WRITE,
+        0,
+        FCPreWrite,
+        FCPostWrite
+    },
+    {
+        IRP_MJ_OPERATION_END,
+        0,
+        NULL,
+        NULL
+    }
+};
+
+const FLT_CONTEXT_REGISTRATION ContextRegistration[] = {
+    {
+        FLT_VOLUME_CONTEXT,
+        0,
+        FCCleanupVolumeContext,
+        sizeof(CUSTOM_FC_VOLUME_CONTEXT),
+        POOL_TAG_FCvx,
+        NULL,
+        NULL,
+        NULL
+    },
+    {
+        FLT_STREAM_CONTEXT,
+        0,
+        FCCleanupStreamContext,
+        sizeof(CUSTOM_FC_STREAM_CONTEXT),
+        POOL_TAG_FCsx,
+        NULL,
+        NULL,
+        NULL
+    },
+    {
+        FLT_CONTEXT_END,
+        0,
+        NULL,
+        0,
+        0,
+        NULL,
+        NULL,
+        NULL
+    }
+};
+
+const FLT_REGISTRATION FilterRegistration = {
+    sizeof(FLT_REGISTRATION),
+    FLT_REGISTRATION_VERSION,
+    0,
+    ContextRegistration,
+    Callbacks,
+    FCFilterUnload,
+    FCInstanceSetup,
+    FCInstanceQueryTeardown,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL
+};
+
+NTSTATUS
+DriverEntry(
+    PDRIVER_OBJECT PDriverObject,
+    PUNICODE_STRING PRegistryPath
+)
+{
+    BOOLEAN isMobileOS;
+    NTSTATUS osVersionStatus;
+    NTSTATUS status;
+    PVOID event1;
+    USHORT regPathLengthPlus2;
+    PVOID event2;
+    ULONG flags;
+    OSVERSIONINFOW lpVersionInfo;
+    bool cleanupLists = false;
+    bool driverInitialized = false;
+    bool driverRegistered = false;
+    bool listsInitialized = false;
+
+    event2 = (PVOID)0x110;
+
+    memset(&lpVersionInfo.dwMajorVersion, 0, 0x110);
+    lpVersionInfo.dwOSVersionInfoSize = 0x114;
+
+    osVersionStatus = RtlGetVersion(&lpVersionInfo);
+
+    /* Check if OS is Windows 7 or later (Win7 => 6.1, Win8 => 6.2, Win8.1 => 6.3, Win10 => 10) */
+    if (-1 < osVersionStatus &&
+        (
+            6 < lpVersionInfo.dwMajorVersion || // Later than Windows 7
+            lpVersionInfo.dwMajorVersion == 6 && 1 < lpVersionInfo.dwMinorVersion // Windows 7 or 8
+        )
+    )
+    {
+        ExDefaultNonPagedPoolType = NonPagedPoolNx;
+        ExDefaultMdlProtection = MdlMappingNoExecute;
+    }
+
+    /* Registers the driver for Event Tracing (ETW) */
+    McGenEventRegister_EtwRegister();
+    event1 = PRegistryPath;
+
+    /* Registry Path is: Computer\HKEY_LOCAL_MACHINE\SYSTEM\ControlSet001\Services\FileCrypt */
+    status = FCReadDriverParameters(PRegistryPath);
+    listsInitialized = false;
+
+    if (status < 0)
+    {
+    DriverEntry_cleanup:
+        cleanupLists = listsInitialized;
+        if (-1 < status)
+        {
+            goto DriverEntry_return;
+        }
+    }
+    else
+    {
+        event1 = (PVOID)0x40;
+        event2 = (undefined8*)0x6e694346;
+
+        regPathLengthPlus2 = PRegistryPath->Length + 2;
+        gRegistryPath.Buffer = ExAllocatePool2(0x40, regPathLengthPlus2, POOL_TAG_FCin);
+
+        if (gRegistryPath.Buffer != NULL)
+        {
+            gRegistryPath.MaximumLength = regPathLengthPlus2;
+            RtlCopyUnicodeString(&gRegistryPath, PRegistryPath);
+
+            flags = ExDefaultNonPagedPoolType | NonPagedPoolNx;
+            gRegistryPath.Buffer[PRegistryPath->Length >> 1] = L'\0';
+
+            /* gPre2PostIoContextList is used to pass encryption data between the the pre and post operations of
+             * Read and Write */
+            ExInitializeNPagedLookasideList(
+                &gPre2PostIoContextList,
+                NULL,
+                NULL,
+                flags,
+                0x20,
+                POOL_TAG_FCpp,
+                0
+            );
+
+            /* gPre2PostCreateContextList is used to pass a CompletionContext between the Pre and Post
+               operations of the Create callback */
+            ExInitializeNPagedLookasideList(
+                &gPre2PostCreateContextList,
+                NULL,
+                NULL,
+                ExDefaultNonPagedPoolType | NonPagedPoolNx,
+                0x10,
+                POOL_TAG_FCpp,
+                0
+            );
+
+            listsInitialized = true;
+            ExInitializeNPagedLookasideList(
+                &gShadowBufferList,
+                NULL,
+                NULL,
+                ExDefaultNonPagedPoolType | NonPagedPoolNx,
+                0x10000,
+                POOL_TAG_FCsb,
+                0
+            );
+
+            isMobileOS = FsRtlIsMobileOS();
+            if (isMobileOS == TRUE)
+            {
+                /* Swap the normal callbacks with ones specific for mobile */
+                *((FLT_OPERATION_REGISTRATION**)&FilterRegistration.OperationRegistration) = &CallbacksMobile;
+            }
+
+            event2 = &gFilterHandle;
+            status = FltRegisterFilter(PDriverObject, &FilterRegistration, &gFilterHandle);
+            event1 = PDriverObject;
+
+            if (-1 < status)
+            {
+                status = StSecInitialize(PDriverObject);
+
+                event1 = PDriverObject;
+                driverRegistered = true;
+                if (-1 < status)
+                {
+                    event1 = gFilterHandle;
+                    status = FltStartFiltering(gFilterHandle);
+                    driverInitialized = true;
+                    driverRegistered = true;
+                }
+            }
+
+            goto DriverEntry_cleanup;
+        }
+
+        status = STATUS_INSUFFICIENT_RESOURCES;
+    }
+    if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
+    {
+        McTemplateK0d_EtwWriteTransfer(event1, &DriverEntryFailure, event2, status);
+    }
+    if (cleanupLists)
+    {
+        ExDeleteNPagedLookasideList(&gPre2PostIoContextList);
+        ExDeleteNPagedLookasideList(&gPre2PostCreateContextList);
+        ExDeleteNPagedLookasideList(&gShadowBufferList);
+    }
+    if (gRegistryPath.Buffer != NULL)
+    {
+        ExFreePoolWithTag(gRegistryPath.Buffer,POOL_TAG_FCin);
+    }
+    if (driverInitialized)
+    {
+        StSecDeinitialize();
+    }
+    if (driverRegistered)
+    {
+        FltUnregisterFilter(gFilterHandle);
+    }
+
+DriverEntry_return:
+    return STATUS_SUCCESS;
 }

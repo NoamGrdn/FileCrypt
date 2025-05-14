@@ -69,9 +69,9 @@ typedef struct _CUSTOM_FC_VOLUME_CONTEXT
     /* Encryption settings for the volume */
     CUSTOM_FC_BCRYPT_DATA BcryptAlgHandle;
     /* Flag indicating if encryption is enabled */
-    BYTE EncryptionEnabled;
+    BOOLEAN EncryptionEnabled;
     /* Does volume need verification */
-    BYTE VerificationNeeded;
+    BOOLEAN VerificationNeeded;
     UCHAR Padding2[6];
 } CUSTOM_FC_VOLUME_CONTEXT, *PCUSTOM_FC_VOLUME_CONTEXT;
 
@@ -347,12 +347,12 @@ FCPreWrite(
     PVOID* CompletionContext
 );
 
-VOID
+NTSTATUS
 FCReadDriverParameters(
     PUNICODE_STRING PRegistryPath
 );
 
-VOID
+NTSTATUS
 DriverEntry(
     PDRIVER_OBJECT PDriverObject,
     PUNICODE_STRING PRegistryPath
@@ -404,11 +404,20 @@ EVENT_DESCRIPTOR GetChamberProfileEncryptionKeyFailure;
 EVENT_DESCRIPTOR GenerateSymmetricKeyFailure;
 EVENT_DESCRIPTOR GetSecurityDescriptorFailure;
 EVENT_DESCRIPTOR PostCreateFailure;
-
+EVENT_DESCRIPTOR PreCreateFailure;
+EVENT_DESCRIPTOR GetFileNameInformationFailure;
+EVENT_DESCRIPTOR ParseFileNameInformationFailure;
+EVENT_DESCRIPTOR AllocationFailure;
+EVENT_DESCRIPTOR ObtainSdAndChamberIdFailure;
+EVENT_DESCRIPTOR ConstructFullPathFailure;
+EVENT_DESCRIPTOR GetVolumeContextFailure;
+EVENT_DESCRIPTOR PreReadFailure;
+EVENT_DESCRIPTOR DriverEntryFailure;
 
 /* Filter */
 
-#define 
+#define FLT_REGISTRATION_VERSION 0x203
+ 
 ULONG gFCFlags = 0;
 
 #define EncryptMediaFlagBit                0x02

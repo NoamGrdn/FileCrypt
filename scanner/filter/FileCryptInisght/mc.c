@@ -70,8 +70,8 @@ McGenControlCallbackV2 (
 }
 
 
-NTSTATUS McGenEventRegister_EtwRegister(void)
-
+NTSTATUS
+McGenEventRegister_EtwRegister(void)
 {
   if (FileCryptGuid_Context != NULL) {
     return STATUS_SUCCESS;
