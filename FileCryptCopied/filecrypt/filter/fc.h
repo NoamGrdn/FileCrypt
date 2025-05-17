@@ -393,6 +393,17 @@ EXTERN_C __declspec(selectany) MCGEN_TRACE_CONTEXT Microsoft_Windows_FileCrypt_D
     0, 0, 0, 0, 0, 0, 0, 0, 1, &Microsoft_Windows_FileCryptEnableBits, Microsoft_Windows_FileCrypt_DriverKeywords,
     Microsoft_Windows_FileCrypt_DriverLevels
 };
+EXTERN_C __declspec(selectany) MCGEN_TRACE_CONTEXT* FileCryptGuid_Context = NULL;
+
+EXTERN_C __declspec(selectany) GUID FileCryptGuidData = {
+    0xDADEFA21,          // Data1
+    0x806E,              // Data2
+    0x4241,              // Data3
+    {0x8D, 0x0E, 0xE2, 0x2, 0x93, 0xC7, 0x4E, 0x06}  // Data4
+};
+
+EXTERN_C __declspec(selectany) LPGUID FileCryptGuid = &FileCryptGuidData;
+
 
 EVENT_DESCRIPTOR LockUserBufferFailure;
 EVENT_DESCRIPTOR GetSystemAddressFailure;
@@ -496,3 +507,14 @@ HANDLE g_DebugProfileKey = NULL;
 #define POOL_TAG_STsp 0x70537453
 #define POOL_TAG_AppX 0x58707041
 #define POOL_TAG_StSn 0x6e537453
+
+
+///////////////////////////////////////////////////////////////////////////
+//
+//  Boolean stuff
+//
+///////////////////////////////////////////////////////////////////////////
+
+#define bool unsigned char
+#define true 1
+#define false 0

@@ -1,5 +1,6 @@
 ﻿#include "mc.h"
 
+long long DAT_1c0008078 = 0;
 
 void
 McGenControlCallbackV2 (
@@ -73,15 +74,59 @@ McGenControlCallbackV2 (
 NTSTATUS
 McGenEventRegister_EtwRegister(void)
 {
-  if (Microsoft_Windows_FileCrypt_DRIVER_PROVIDER_GUID_Context == NULL) {
+  if (FileCryptGuid_Context != NULL) {
     return STATUS_SUCCESS;
   }
   
   return EtwRegister(
-    &Microsoft_Windows_FileCrypt_DRIVER_PROVIDER_GUID_Context,
-    McGenControlCallbackV2,
-    &Microsoft_Windows_FileCrypt_DRIVER_PROVIDER_GUID_Context,
-    &Microsoft_Windows_FileCrypt_DRIVER_PROVIDER_GUID_Context
+      FileCryptGuid,
+      McGenControlCallbackV2,
+      FileCryptGuid_Context,
+      FileCryptGuid_Context
     );
 }
+
+undefined8 McGenEventUnregister_EtwUnregister(void)
+
+{
+    NTSTATUS NVar1;
+    undefined8 uVar2;
+    undefined4 extraout_var;
+
+    if (FileCryptGuid_Context == (PVOID)0x0) {
+        uVar2 = 0;
+    }
+    else {
+        NVar1 = EtwUnregister((REGHANDLE)FileCryptGuid_Context);
+        FileCryptGuid_Context = (PVOID)0x0;
+        //uVar2 = CONCAT44(extraout_var, NVar1);
+    }
+    return NVar1;
+}
+
+void McGenEventWrite_EtwWriteTransfer(undefined8 param_1, PCEVENT_DESCRIPTOR EventDescriptor, undefined8 param_3, ULONG DataCount, PEVENT_DATA_DESCRIPTOR Data)
+
+{
+    uint uVar1;
+    uint dataSize;
+    ushort* data;
+
+    data = DAT_1c0008078;
+    dataSize = 0;
+    if (DAT_1c0008078 == (ushort*)0x0) {
+        Data->Ptr = 0;
+        uVar1 = dataSize;
+    }
+    else {
+        Data->Ptr = (ULONGLONG)DAT_1c0008078;
+        uVar1 = 2;
+        dataSize = (uint)*data;
+    }
+    Data->Size = dataSize;
+    Data-Reserved = uVar1;
+    EtwWriteTransfer(FileCryptGuid_Context, EventDescriptor, FileCryptGuid, 0, DataCount, Data);
+    return;
+}
+
+
 
