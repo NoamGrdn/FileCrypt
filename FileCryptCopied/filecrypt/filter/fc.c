@@ -2260,14 +2260,14 @@ FCPreWrite(
         /* This is a call to MmProbeAndLockPages */
         //(*(code*)0xa996)(mdl, 1);
         MmMdlPageContentsState(mdl, 1);
-        generalPtr = (NPAGED_LOOKASIDE_LIST*)(ioqb->Parameters).QueryEa.MdlAddress;
+        generalPtr = (NPAGED_LOOKASIDE_LIST*)(ioqb->Parameters).Others.Argument5;
         if ((PFLT_CALLBACK_DATA)generalPtr == NULL)
         {
-            plaintext = (PUCHAR)(ioqb->Parameters).LockControl.ProcessId;
+            plaintext = (PUCHAR)(ioqb->Parameters).Write.MdlAddress;
         FCPreWrite_encrypt:
             setter = plaintext;
             ioStatus = FCpEncEncrypt(&volumeContext->BcryptAlgHandle, &streamContext->KeyData, plaintext, ciphertext,
-                                     totalSizeToEncrypt, (PUCHAR)(ioqb->Parameters).QueryOpen.Length);
+                                     totalSizeToEncrypt, (PUCHAR)(ioqb->Parameters).Write.WriteBuffer);
             generalPtr = &gPre2PostIoContextList;
             lookasideEntry =
                 (CUSTOM_FC_WRITE_CONTEXT*)ExAllocateFromNPagedLookasideList(
@@ -2276,8 +2276,8 @@ FCPreWrite(
             if (lookasideEntry != NULL)
             {
                 /* Replace original write buffer with encrypted buffer */
-                (ioqb->Parameters).Create.EaBuffer = ciphertext;
-                (ioqb->Parameters).QueryQuota.QuotaBuffer = mdl;
+                (ioqb->Parameters).Write.MdlAddress = ciphertext;
+                (ioqb->Parameters).Others.Argument5 = mdl;
                 generalPtr = (NPAGED_LOOKASIDE_LIST*)CallbackData;
                 /* Mark callback data as modified */
                 FltSetCallbackDataDirty(CallbackData);
