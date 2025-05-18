@@ -399,7 +399,17 @@ EXTERN_C __declspec(selectany) GUID FileCryptGuidData = {
     0xDADEFA21,          // Data1
     0x806E,              // Data2
     0x4241,              // Data3
-    {0x8D, 0x0E, 0xE2, 0x2, 0x93, 0xC7, 0x4E, 0x06}  // Data4
+    {0x8D, 0x0E, 0xE2, '2', 0x93, 0xC7, 0x4E, 0x06}  // Data4
+};
+
+EXTERN_C __declspec(selectany) EVENT_DESCRIPTOR PreWriteFailure = {
+    0xCB,                  /* Id */
+    0x00,                  /* Version */
+    0x10,                  /* Channel */
+    0x04,                  /* Level */
+    0x00,                  /* Opcode */
+    0x0000,                /* Task */
+    0x8000000000000004     /* Keyword */
 };
 
 EXTERN_C __declspec(selectany) LPGUID FileCryptGuid = &FileCryptGuidData;

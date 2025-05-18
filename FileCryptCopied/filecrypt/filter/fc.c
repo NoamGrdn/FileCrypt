@@ -2182,7 +2182,7 @@ FCPreWrite(
     streamContext = NULL;
     lookasideEntry = NULL;
     unknown3 = NULL;
-    writeLength = (ioqb->Parameters).Read.Length;
+    writeLength = (ioqb->Parameters).Write.Length;
     setter = &streamContext;
     generalPtr = (NPAGED_LOOKASIDE_LIST*)FltObjects->Instance;
     ioStatus = FltGetStreamContext((PFLT_INSTANCE)generalPtr, FltObjects->FileObject, (PFLT_CONTEXT*)setter);
@@ -2249,14 +2249,17 @@ FCPreWrite(
            with encrypted data. The original data might be described by an MDL (if present) or direct
            buffer. By creating a new MDL for the encrypted buffer, the driver can redirect the I/O operation
            to use the encrypted data instead. */
-        mdl = (PMDL)(*(code*)0xa8fc)(ciphertext, totalSizeToEncrypt, 0, 0, 0);
+        // mdl = (PMDL)(*(code*)0xa8fc)(ciphertext, totalSizeToEncrypt, 0, 0, 0);
+        mdl = IoAllocateMdl(ciphertext, totalSizeToEncrypt, 0, 0, 0);
         unknown2 = mdl;
         allocationTypeCopy = allocationType;
         if (mdl == NULL) goto FCPreWrite_set_allocation_failure_status;
         /* This is a call to MmBuildMdlForNonPagedPool */
-        (*(code*)0xa8c8)(mdl);
+        //(*(code*)0xa8c8)(mdl);
+        MmBuildMdlForNonPagedPool(mdl);
         /* This is a call to MmProbeAndLockPages */
-        (*(code*)0xa996)(mdl, 1);
+        //(*(code*)0xa996)(mdl, 1);
+        MmMdlPageContentsState(mdl, 1);
         generalPtr = (NPAGED_LOOKASIDE_LIST*)(ioqb->Parameters).QueryEa.MdlAddress;
         if ((PFLT_CALLBACK_DATA)generalPtr == NULL)
         {
@@ -2297,7 +2300,7 @@ FCPreWrite(
         }
         else
         {
-            setter = *(PVOID*)&(((PFLT_CALLBACK_DATA)generalPtr)->IoStatus).field0_0x0.Status;
+            setter = *(PVOID*)&(((PFLT_CALLBACK_DATA)generalPtr)->IoStatus).Status;
         }
         plaintext = (PUCHAR)setter;
         if ((CUSTOM_FC_VOLUME_CONTEXT**)setter != NULL) goto FCPreWrite_encrypt;
@@ -2336,7 +2339,7 @@ FCPreWrite_cleanup_and_return:
     }
     if (return_status == FLT_PREOP_COMPLETE)
     {
-        (CallbackData->IoStatus).field0_0x0.Status = ioStatus;
+        (CallbackData->IoStatus).Status = ioStatus;
         (CallbackData->IoStatus).Information = 0;
         if ((_Microsoft_Windows_FileCryptEnableBits & 2) != 0)
         {
