@@ -2203,7 +2203,7 @@ FCPreWrite(
     ioStatus = FltGetVolumeContext((PFLT_FILTER)generalPtr, FltObjects->Volume, (PFLT_CONTEXT*)setter);
     if (ioStatus < 0)
     {
-        if ((_Microsoft_Windows_FileCryptEnableBits & 1) != 0)
+        if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
         {
             McTemplateK0d_EtwWriteTransfer(generalPtr, &GetVolumeContextFailure, setter, ioStatus);
         }
@@ -2236,7 +2236,7 @@ FCPreWrite(
         /* STATUS_INSUFFICIENT_RESOURCES */
         ioStatus = -0x3fffff66;
         return_status = FLT_PREOP_COMPLETE;
-        if ((_Microsoft_Windows_FileCryptEnableBits & 1) == 0) goto FCPreWrite_cleanup_and_return;
+        if ((Microsoft_Windows_FileCryptEnableBits & 1) == 0) goto FCPreWrite_cleanup_and_return;
         eventDescriptor = &AllocationFailure;
     }
     else
@@ -2306,7 +2306,7 @@ FCPreWrite(
         if ((CUSTOM_FC_VOLUME_CONTEXT**)setter != NULL) goto FCPreWrite_encrypt;
         ioStatus = -0x3fffff66;
         return_status = FLT_PREOP_COMPLETE;
-        if ((_Microsoft_Windows_FileCryptEnableBits & 1) == 0) goto FCPreWrite_cleanup_and_return;
+        if ((Microsoft_Windows_FileCryptEnableBits & 1) == 0) goto FCPreWrite_cleanup_and_return;
         eventDescriptor = &GetSystemAddressFailure;
     }
     return_status = FLT_PREOP_COMPLETE;
@@ -2341,9 +2341,9 @@ FCPreWrite_cleanup_and_return:
     {
         (CallbackData->IoStatus).Status = ioStatus;
         (CallbackData->IoStatus).Information = 0;
-        if ((_Microsoft_Windows_FileCryptEnableBits & 2) != 0)
+        if ((Microsoft_Windows_FileCryptEnableBits & 2) != 0)
         {
-            McTemplateK0d_EtwWriteTransfer((ulonglong)_Microsoft_Windows_FileCryptEnableBits, &PreWriteFailure, setter,
+            McTemplateK0d_EtwWriteTransfer((ulonglong)Microsoft_Windows_FileCryptEnableBits, &PreWriteFailure, setter,
                                            ioStatus);
         }
     }
@@ -2577,7 +2577,7 @@ const FLT_CONTEXT_REGISTRATION ContextRegistration[] = {
     }
 };
 
-const FLT_REGISTRATION FilterRegistration = {
+FLT_REGISTRATION FilterRegistration = {
     sizeof(FLT_REGISTRATION),
     FLT_REGISTRATION_VERSION,
     0,
@@ -2706,7 +2706,7 @@ DriverEntry(
             if (isMobileOS == TRUE)
             {
                 /* Swap the normal callbacks with ones specific for mobile */
-                *((FLT_OPERATION_REGISTRATION**)&FilterRegistration.OperationRegistration) = &CallbacksMobile;
+                FilterRegistration.OperationRegistration = CallbacksMobile;
             }
 
             event2 = &gFilterHandle;
