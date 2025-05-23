@@ -412,6 +412,17 @@ EXTERN_C __declspec(selectany) EVENT_DESCRIPTOR PreWriteFailure = {
     0x8000000000000004     /* Keyword */
 };
 
+EXTERN_C __declspec(selectany) EVENT_DESCRIPTOR PostReadFailure = {
+    0x00C9,                    // Event ID (201)
+    0x00,                      // Version 0
+    0x10,                      // Channel 16
+    0x04,                      // Information level
+    0x00,                      // No opcode
+    0x0000,                    // No task
+    0x8000000000000004ULL      // Keyword bitmask
+};
+
+
 EXTERN_C __declspec(selectany) LPGUID FileCryptGuid = &FileCryptGuidData;
 
 

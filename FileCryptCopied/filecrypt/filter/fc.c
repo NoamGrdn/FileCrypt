@@ -1254,7 +1254,6 @@ FCPostCreate(
     return FLT_POSTOP_FINISHED_PROCESSING;
 }
 
-// TODO
 FLT_POSTOP_CALLBACK_STATUS
 FCPostRead(
     PFLT_CALLBACK_DATA CallbackData,
@@ -1268,7 +1267,7 @@ FCPostRead(
     PFLT_GENERIC_WORKITEM fltWorkItem;
     CUSTOM_FC_DECRYPT_PARAMS* fcDecryptParams;
     CUSTOM_FC_DECRYPT_PARAMS* contexts;
-    code* event;
+    PVOID event;
     FLT_POSTOP_CALLBACK_STATUS status;
     FLT_POSTOP_CALLBACK_STATUS return_status;
     CUSTOM_FC_DECRYPT_PARAMS decryptParamsSetter;
@@ -1277,7 +1276,7 @@ FCPostRead(
     shouldCleanupMemory = true;
     fltWorkItem = NULL;
     fcDecryptParams = NULL;
-    decryptParamsSetter = (CUSTOM_FC_DECRYPT_PARAMS)ZEXT816(0);
+    memset(&decryptParamsSetter, 0, sizeof(decryptParamsSetter));
     status = FLT_POSTOP_FINISHED_PROCESSING;
     ioStatus = 0;
     contexts = (CUSTOM_FC_DECRYPT_PARAMS*)CompletionContext;
@@ -1286,7 +1285,7 @@ FCPostRead(
        1. FLTFL_POST_OPERATION_DRAINING is off => Not a cleanup call (fltKernel.h)
        2. Whether the I/O operation succeeded (status >= 0)
        3. Whether any data was actually read (Information != 0) */
-    if ((((Flags & 1) == 0) && (return_status = status, -1 < (CallbackData->IoStatus).field0_0x0.Status)) &&
+    if ((((Flags & 1) == 0) && (return_status = status, -1 < (CallbackData->IoStatus).Status)) &&
         ((CallbackData->IoStatus).Information != 0))
     {
         currentIrql = KeGetCurrentIrql();
@@ -1302,13 +1301,15 @@ FCPostRead(
            is a file system filter operation */
         if ((currentIrql < DISPATCH_LEVEL) ||
             (((CallbackData->IoStatus).Information < 0x20001 &&
-                (((CallbackData->Iopb->Parameters).QueryEa.MdlAddress != NULL || ((CallbackData->Flags & 8) != 0))))))
+                (((CallbackData->Iopb->Parameters).Others.Argument5 != NULL || ((CallbackData->Flags & 8) != 0))))))
         {
-            decryptParamsSetter = (CUSTOM_FC_DECRYPT_PARAMS)CONCAT88(CompletionContext, CallbackData);
+            //decryptParamsSetter = (CUSTOM_FC_DECRYPT_PARAMS)CONCAT88(CompletionContext, CallbackData);
+            decryptParamsSetter.CallbackData = CallbackData;
+            decryptParamsSetter.CompletionContext = CompletionContext;
             contexts = &decryptParamsSetter;
             FCDecryptWorker(NULL, FltObjects->Instance, contexts);
             shouldCleanupMemory = false;
-            ioStatus = (CallbackData->IoStatus).field0_0x0.Status;
+            ioStatus = (CallbackData->IoStatus).Status;
         }
         else
         {
@@ -1342,7 +1343,7 @@ FCPostRead(
 FCPostRead_cleanup_and_return:
     if (ioStatus < 0)
     {
-        (CallbackData->IoStatus).field0_0x0.Status = ioStatus;
+        (CallbackData->IoStatus).Status = ioStatus;
         (CallbackData->IoStatus).Information = 0;
     }
     if (shouldCleanupMemory)
@@ -1360,9 +1361,9 @@ FCPostRead_cleanup_and_return:
         }
         return_status = FLT_POSTOP_FINISHED_PROCESSING;
     }
-    if ((ioStatus < 0) && ((_Microsoft_Windows_FileCryptEnableBits & 2) != 0))
+    if ((ioStatus < 0) && ((Microsoft_Windows_FileCryptEnableBits & 2) != 0))
     {
-        McTemplateK0d_EtwWriteTransfer((ulonglong)_Microsoft_Windows_FileCryptEnableBits, &PostReadFailure, contexts,
+        McTemplateK0d_EtwWriteTransfer((ulonglong)Microsoft_Windows_FileCryptEnableBits, &PostReadFailure, contexts,
                                        ioStatus);
     }
 
@@ -2139,7 +2140,6 @@ FCpRetrieveAppPairingId(
     return return_status;
 }
 
-// TODO
 FLT_PREOP_CALLBACK_STATUS
 FCPreWrite(
     PFLT_CALLBACK_DATA CallbackData,
