@@ -2399,7 +2399,6 @@ FCReadDriverParameters(
                 /* The 4-byte value in the Data field (4 offest from the 12th byte) is a DWORD that contains the
                  * actual registry value */
 
-                // TODO READ 4 BYTES 
                 FcDebugTraceLevel = keyValueInfo.Data[0];
             }
         }
@@ -2415,8 +2414,8 @@ FCReadDriverParameters(
 
         if (-1 < status)
         {
-            // TODO READ 4 BYTES 
-            if (keyValueInfo._12_4_ == 0)
+
+            if (keyValueInfo.Data[0] == 0)
             {
                 gFCFlags = gFCFlags & 0xfffffffd;
             }
@@ -2437,8 +2436,7 @@ FCReadDriverParameters(
 
         if (-1 < status)
         {
-            // TODO READ 4 BYTES 
-            if (keyValueInfo._12_4_ == 0)
+            if (keyValueInfo.Data[0] == 0)
             {
                 gFCFlags = gFCFlags & 0xfffffffb;
             }
@@ -2459,8 +2457,7 @@ FCReadDriverParameters(
 
         if (-1 < status)
         {
-            // TODO READ 4 BYTES 
-            if (keyValueInfo._12_4_ == 0)
+            if (keyValueInfo.Data[0] == 0)
             {
                 gFCFlags = gFCFlags & 0xffffffef;
             }
@@ -2481,8 +2478,7 @@ FCReadDriverParameters(
 
         if (-1 < status)
         {
-            // TODO READ 4 BYTES 
-            if (keyValueInfo._12_4_ == 0)
+            if (keyValueInfo.Data[0] == 0)
             {
                 gFCFlags = gFCFlags & 0xfffffff7;
             }

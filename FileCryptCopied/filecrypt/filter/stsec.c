@@ -3303,7 +3303,7 @@ StSecpSealKey(
     int contextCreateResult;
     TBS_RESULT tpmCommandResult;
     NTSTATUS return_status;
-    undefined7 extraout_var;
+    //undefined7 extraout_var;
     void* masterKey;
     ulonglong unsealedKeySize;
     UINT32 cbCommand;
@@ -3311,7 +3311,7 @@ StSecpSealKey(
     UINT32 pcbResult;
     TBS_HCONTEXT tbsHContext;
     TBS_CONTEXT_PARAMS2 contextParams2;
-    PCBYTE abCommand;
+    /*PCBYTE abCommand;
     undefined2 uStack_240;
     undefined2 uStack_23e;
     undefined4 uStack_23c;
@@ -3322,46 +3322,49 @@ StSecpSealKey(
     char local_228;
     undefined4 commandBuffer[3];
     undefined8 uStack_21b;
-    undefined2 auStack_213[229];
+    undefined2 auStack_213[229];*/
+    CUSTOM_FC_TPM_SEAL_COMMAND abCommand;
 
 
     masterKey = g_MasterKey;
     unsealedKeySize = (ulonglong)UnsealedKeySize;
     contextParams2.version = 2;
-    contextParams2.field1_0x4.asUINT32 = 4;
+    contextParams2.asUINT32 = 4;
     tbsHContext = NULL;
     memset(&abCommand, 0, 0x200);
     pcbResult = 0x200;
     cbCommand = UnsealedKeySize + 0x37;
     skipSealKey = StSecpSealKeyTestHookSet();
-    if ((int)CONCAT71(extraout_var, skipSealKey) == 0)
+    if ((int)skipSealKey == 0)
     {
         if ((0x80 < UnsealedKeySize) ||
             (contextCreateResult = Tbsi_Context_Create(&contextParams2, &tbsHContext), contextCreateResult != 0))
             goto StSecpSealKey_cleanup_and_return;
         abCommand._6_2_ = 0;
-        uStack_240 = 0x5301;
-        uStack_23e = 0x81;
+        abCommand.uStack_240 = 0x5301;
+        abCommand.uStack_23e = 0x81;
         /* Set up TPM command for sealing */
-        uStack_23c = 0x100;
-        local_238 = 0x400900;
-        uStack_234 = 0x900;
+        abCommand.uStack_23c = 0x100;
+        abCommand.local_238 = 0x400900;
+        abCommand.uStack_234 = 0x900;
         /* onstruct command header */
-        abCommand._0_4_ = CONCAT13((char)(cbCommand >> 0x10), CONCAT12((char)(cbCommand >> 0x18), 0x280));
+        //abCommand._0_4_ = CONCAT13((char)(cbCommand >> 0x10), CONCAT12((char)(cbCommand >> 0x18), 0x280));
+        abCommand._0_4_ = ((cbCommand >> 0x10) & 0xFF) << 24 | ((cbCommand >> 0x18) & 0xFF) << 8 | 0x0280;
         abCommand._4_1_ = (undefined)(cbCommand >> 8);
         /* Set up key data parameters */
-        uStack_230 = CONCAT13((char)(UnsealedKeySize + 4 >> 8), 1);
-        local_228 = (char)UnsealedKeySize;
-        uStack_22c = (uint)(byte)(local_228 + 4) | (UnsealedKeySize >> 8) << 0x18;
+        //abCommand.uStack_230 = CONCAT13((char)(UnsealedKeySize + 4 >> 8), 1);
+        abCommand.uStack_230 = ((UnsealedKeySize + 4 >> 8 ) & 0xFF) << 24 | 1;
+        abCommand.local_228 = (char)UnsealedKeySize;
+        abCommand.uStack_22c = (uint)(byte)(abCommand.local_228 + 4) | (UnsealedKeySize >> 8) << 0x18;
         abCommand._5_1_ = (undefined)cbCommand;
         /* Copy the actual master key into the command buffer */
-        memcpy(commandBuffer, masterKey, unsealedKeySize);
+        memcpy(abCommand.commandBuffer, masterKey, unsealedKeySize);
         /* Additional TPM parameters after the key */
-        *(undefined4*)((longlong)commandBuffer + unsealedKeySize) = 0x8000e00;
-        *(undefined4*)((longlong)commandBuffer + unsealedKeySize + 4) = 0xb00;
-        *(undefined4*)((longlong)commandBuffer + unsealedKeySize + 8) = 0x5204;
-        *(undefined8*)((longlong)&uStack_21b + unsealedKeySize) = 0x1000;
-        *(undefined2*)((longlong)auStack_213 + unsealedKeySize) = 0;
+        *(undefined4*)((longlong)abCommand.commandBuffer + unsealedKeySize) = 0x8000e00;
+        *(undefined4*)((longlong)abCommand.commandBuffer + unsealedKeySize + 4) = 0xb00;
+        *(undefined4*)((longlong)abCommand.commandBuffer + unsealedKeySize + 8) = 0x5204;
+        *(undefined8*)((longlong)&abCommand.uStack_21b + unsealedKeySize) = 0x1000;
+        *(undefined2*)((longlong)abCommand.auStack_213 + unsealedKeySize) = 0;
 
         /* Submit command to TPM */
         tpmCommandResult = Tbsip_Submit_Command(
@@ -3374,11 +3377,11 @@ StSecpSealKey(
             &pcbResult
         );
 
-        if ((tpmCommandResult != 0) || (CONCAT22(uStack_240, abCommand._6_2_) != 0))
+        if ((tpmCommandResult != 0) || (int)(((abCommand.uStack_240 << 16) & 0xFFFF) | (abCommand._6_2_ & 0xFFFF)) != 0)
             goto
                 StSecpSealKey_cleanup_and_return;
         /* Calculate location and size of sealed blob in the response */
-        contextCreateResult = (uStack_23c >> 0x18) + 2 + (uStack_23c >> 0x10 & 0xff) * 0x100;
+        contextCreateResult = (abCommand.uStack_23c >> 0x18) + 2 + (abCommand.uStack_23c >> 0x10 & 0xff) * 0x100;
         UnsealedKeySize =
             (uint)*(byte*)((longlong)&abCommand + (ulonglong)(contextCreateResult + 0xe)) * 0x100 + 2 +
             (uint)*(byte*)((longlong)&abCommand + (ulonglong)(contextCreateResult + 0xf)) + contextCreateResult;
@@ -3386,7 +3389,7 @@ StSecpSealKey(
         {
             /* Copy sealed blob to output buffer if size permits */
             unsealedKeySize = (ulonglong)UnsealedKeySize;
-            masterKey = (void*)((longlong)&uStack_23c + 2);
+            masterKey = (void*)((longlong)&abCommand.uStack_23c + 2);
             goto StSecpSealKey_set_sealedKey;
         }
     }
@@ -3465,7 +3468,7 @@ NTSTATUS StSecpUnsealKey(
     TBS_RESULT contextCreateResult;
     TBS_RESULT tpmCommandResult;
     NTSTATUS return_status;
-    undefined7 extraout_var;
+    //undefined7 extraout_var;
     UINT32 cbCommand;
     undefined auStackY_2d8[32];
     UINT32 local_298;
@@ -3508,13 +3511,13 @@ NTSTATUS StSecpUnsealKey(
     uStack_278 = 1;
     /* Becuase version = 2 the type must be tdTBS_CONTEXT_PARAMS*2* */
     contextParams2.version = 2;
-    contextParams2.field1_0x4.asUINT32 = 4;
+    contextParams2.asUINT32 = 4;
     tbsHContext = NULL;
     memset(&abCommand, 0, 0x200);
     local_298 = 0x200;
     cbCommand = SealedKeyBlobSize + 0x1b;
     skipSealKey = StSecpSealKeyTestHookSet();
-    if ((int)CONCAT71(extraout_var, skipSealKey) == 0)
+    if ((int)skipSealKey == 0)
     {
         if ((0x1e5 < SealedKeyBlobSize) ||
             (contextCreateResult = Tbsi_Context_Create(&contextParams2, &tbsHContext), contextCreateResult != 0))

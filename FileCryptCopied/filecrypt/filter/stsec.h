@@ -14,6 +14,27 @@ Module Name:
 
 #include "fc.h"
 
+typedef union CUSTOM_FC_TPM_SEAL_COMMAND {
+    struct {
+         UINT32 _0_4_;              // part of header?
+         UCHAR _4_1_;               // Another part of a header?
+         UCHAR _5_1_;               // Another part of a header!
+         UINT16 _6_2_;              // Some sort of response code
+         undefined2 uStack_240;
+         undefined2 uStack_23e;
+         undefined4 uStack_23c;
+         undefined4 local_238;
+         undefined4 uStack_234;
+         undefined4 uStack_230;
+         UINT32 uStack_22c;
+         CHAR local_228;
+         undefined4 commandBuffer[3];
+         undefined8 uStack_21b;
+         undefined2 auStack_213[229];
+    };
+    UCHAR rawBuffer[0x200];        // 0x200 buffer
+} CUSTOM_FC_TPM_SEAL_COMMAND;
+
 VOID
 StSecDeinitialize(
     VOID);
