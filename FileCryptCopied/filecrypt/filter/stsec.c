@@ -772,7 +772,7 @@ StSecpCacheInitialize(
 
 /* This function is designed to check if the package name exists as a value under the debug profiles
  * registry key, regardless of the original parameter type that provided that package name.
- * The "conditional" aspect refers towhether it is in debug mode or not. */
+ * The "conditional" aspect refers to whether it is in debug mode or not. */
 NTSTATUS
 StSecpCheckConditionalPolicy(
     PCUNICODE_STRING SecpParameterName,
@@ -826,7 +826,9 @@ StSecpCheckConditionalPolicy(
             status = ZwOpenKey(&keyHandle, 0x80000000, &objectAttributes);
             if (-1 < status)
             {
-                //LOCK();
+                // TODO
+                // LOCK();
+                
                 isDebugProfileKeyNull = g_DebugProfileKey == NULL;
                 g_DebugProfileKey =
                     (HANDLE)(
@@ -877,7 +879,11 @@ StSecpCheckConditionalPolicy(
         if (compResult == 0)
         {
             status = StSecpPackageFamilyNameFromFullName(OutPackageFamilyName, &packgeFamilyName);
-            if (status < 0) goto StSecpCheckConditionalPolicy_cleanup_and_return;
+            if (status < 0)
+            {
+                goto StSecpCheckConditionalPolicy_cleanup_and_return;
+            }
+            
             OutPackageFamilyName = &packgeFamilyName;
             goto StSecpCheckConditionalPolicy_handle_PackageFamilyName_or_ProductId;
         }
