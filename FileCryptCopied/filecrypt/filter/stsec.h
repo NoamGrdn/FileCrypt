@@ -104,7 +104,7 @@ StSecpCacheInitialize(
 NTSTATUS
 StSecpCheckConditionalPolicy(
     PCUNICODE_STRING SecpParameterName,
-    PUNICODE_STRING OutPackageFamilyName,
+    PUNICODE_STRING SecpParameterValue,
     PUCHAR OutIsDebugProfile
 );
 

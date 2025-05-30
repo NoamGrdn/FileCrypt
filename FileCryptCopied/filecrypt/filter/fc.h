@@ -46,7 +46,7 @@ typedef unsigned short ushort;
 typedef unsigned char undefined2;
 
 /* Holds AES-CBC encryption settings - 24 bytes in length */
-typedef struct CUSTOM_FC_BCRYPT_DATA
+typedef struct _CUSTOM_FC_BCRYPT_DATA
 {
     /* Initialized AES Algorithm */
     BCRYPT_ALG_HANDLE BcryptAlgHandle;
@@ -67,18 +67,16 @@ typedef struct _CUSTOM_FC_VOLUME_CONTEXT
     UNICODE_STRING DeviceName;
     /* Disk sector size used for encryption alignment */
     ULONG SectorSize;
-    UCHAR Padding1[4];
     /* Encryption settings for the volume */
     CUSTOM_FC_BCRYPT_DATA BcryptAlgHandle;
     /* Flag indicating if encryption is enabled */
     BOOLEAN EncryptionEnabled;
     /* Does volume need verification */
     BOOLEAN VerificationNeeded;
-    UCHAR Padding2[6];
 } CUSTOM_FC_VOLUME_CONTEXT, *PCUSTOM_FC_VOLUME_CONTEXT;
 
 /* 20 bytes in size */
-typedef struct CUSTOM_FC_BCRYPT_KEY_DATA
+typedef struct _CUSTOM_FC_BCRYPT_KEY_DATA
 {
     /* Symmetric key, generated using a ChamberId */
     BCRYPT_KEY_HANDLE BcryptKeyHandle;
@@ -93,12 +91,10 @@ typedef struct _CUSTOM_FC_STREAM_CONTEXT
 {
     /* File-specific encryption key data */
     CUSTOM_FC_BCRYPT_KEY_DATA KeyData;
-    UCHAR Padding1[4];
     /* Chamber identifier for this file, see FCPostCreate */
     PWCHAR ChamberId;
     /* (1=Install or 2=Data) see StSecpDeriveChamberProfileKey */
     ULONG ChamberType;
-    UCHAR Padding2[4];
 } CUSTOM_FC_STREAM_CONTEXT, *PCUSTOM_FC_STREAM_CONTEXT;
 
 /* Information passed from FCPreCreate to FCPostCreate - 13 bytes in size*/
@@ -131,7 +127,7 @@ typedef struct _CUSTOM_FC_WRITE_CONTEXT
 {
     PCUSTOM_FC_VOLUME_CONTEXT VolumeContext;
     PCUSTOM_FC_STREAM_CONTEXT StreamContext;
-    /* The data that being written to the disk after encryption */
+    /* The data that is being written to the disk after encryption */
     PUCHAR Ciphertext;
     /* Where Ciphertext was allocated: "x01" => NPagedLookasideList, "x02" => PoolWithTag */
     UCHAR AllocationType;
@@ -159,7 +155,6 @@ typedef struct CUSTOM_FC_CHAMBER_DATA
     PWCHAR ChamberId;
     /*  FolderId of CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY */
     ULONG ChamberType;
-    UCHAR Padding[4];
     /* Final operation status */
     NTSTATUS Status;
 } CUSTOM_FC_CHAMBER_DATA, *PCUSTOM_FC_CHAMBER_DATA;
@@ -182,8 +177,8 @@ typedef struct _CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY
     struct _CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY* Next;
     struct _CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY* Prev;
     UNICODE_STRING Path;
-    ULONG FolderId; /* Chamber Type */
-    char Padding[4];
+    /* Chamber Type */
+    ULONG FolderId;
     PWCHAR ChamberId;
 } CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY, *PCUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY;
 

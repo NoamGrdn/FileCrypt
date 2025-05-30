@@ -770,17 +770,15 @@ StSecpCacheInitialize(
 }
 
 
-/* This function is designed to check if the package name exists as a value under the debug profiles
- * registry key, regardless of the original parameter type that provided that package name.
- * The "conditional" aspect refers to whether it is in debug mode or not. */
+/* This function checks whether the provided parameter is contained in a specific registry that decides whether
+ * this value is a debug profile. The "conditional" aspect refers to whether it is in debug mode or not. */
 NTSTATUS
 StSecpCheckConditionalPolicy(
     PCUNICODE_STRING SecpParameterName,
-    PUNICODE_STRING OutPackageFamilyName,
+    PUNICODE_STRING SecpParameterValue,
     PUCHAR OutIsDebugProfile
 )
 {
-    LONG compResult;
     NTSTATUS status = STATUS_SUCCESS;
     bool isDebugProfileKeyNull;
     ULONG resultLength = 0;
@@ -794,13 +792,9 @@ StSecpCheckConditionalPolicy(
     KEY_VALUE_PARTIAL_INFORMATION keyValueInfo;
 
     /* Handle PackageFamilyName or ProductId */
-    compResult = RtlCompareUnicodeString(SecpParameterName, &packageFamilyName, '\x01');
     if (
-        (compResult == 0) ||
-        (
-            compResult = RtlCompareUnicodeString(SecpParameterName, &productId, '\x01'),
-            compResult == 0
-        )
+        RtlCompareUnicodeString(SecpParameterName, &packageFamilyName, '\x01') == 0 ||
+        RtlCompareUnicodeString(SecpParameterName, &productId, '\x01') == 0
     )
     {
     StSecpCheckConditionalPolicy_handle_PackageFamilyName_or_ProductId:
@@ -828,7 +822,7 @@ StSecpCheckConditionalPolicy(
             {
                 // TODO
                 // LOCK();
-                
+
                 isDebugProfileKeyNull = g_DebugProfileKey == NULL;
                 g_DebugProfileKey =
                     (HANDLE)(
@@ -850,7 +844,7 @@ StSecpCheckConditionalPolicy(
         StSecpCheckConditionalPolicy_try_set_debug_profile_key:
             status = ZwQueryValueKey(
                 g_DebugProfileKey,
-                OutPackageFamilyName,
+                SecpParameterValue,
                 KeyValuePartialInformation,
                 &keyValueInfo,
                 0x10,
@@ -872,21 +866,17 @@ StSecpCheckConditionalPolicy(
             goto StSecpCheckConditionalPolicy_cleanup_and_return;
         }
     }
-    else
+    /* Handle PackageFullName */
+    else if (RtlCompareUnicodeString(SecpParameterName, &packageFullName, '\x01') == 0)
     {
-        /* Handle PackageFullName */
-        compResult = RtlCompareUnicodeString(SecpParameterName, &packageFullName, '\x01');
-        if (compResult == 0)
+        status = StSecpPackageFamilyNameFromFullName(SecpParameterValue, &packgeFamilyName);
+        if (status < 0)
         {
-            status = StSecpPackageFamilyNameFromFullName(OutPackageFamilyName, &packgeFamilyName);
-            if (status < 0)
-            {
-                goto StSecpCheckConditionalPolicy_cleanup_and_return;
-            }
-            
-            OutPackageFamilyName = &packgeFamilyName;
-            goto StSecpCheckConditionalPolicy_handle_PackageFamilyName_or_ProductId;
+            goto StSecpCheckConditionalPolicy_cleanup_and_return;
         }
+
+        SecpParameterValue = &packgeFamilyName;
+        goto StSecpCheckConditionalPolicy_handle_PackageFamilyName_or_ProductId;
     }
 
     *OutIsDebugProfile = '\0';
@@ -2084,8 +2074,10 @@ StSecpGetParameterValue_cleanup_and_return:
 
 
 /* Reads from the registry and populates the StSecSecurityDescriptorCacheList with new entries */
-NTSTATUS StSecpGetSecurityDescriptorPolicy(HANDLE RegistryKeyHandle)
-
+NTSTATUS
+StSecpGetSecurityDescriptorPolicy(
+    HANDLE RegistryKeyHandle
+)
 {
     // code* pcVar1;
     // PWCHAR pWVar2;
@@ -2566,13 +2558,12 @@ StSecpGetSidFromPackageFullName(
     NTSTATUS return_status;
     UNICODE_STRING packgeFamilyName = {0, 0, NULL};
 
-    /* StSecpGetSidFromPackageFullName extracts family name from full name
-       StSecpGetSidFromPackageFamilyName tries registry lookup for SID and falls back to StSecpGetAppSid
-       for algorithmic generation if needed */
+    /* Extract family name from full name */
     return_status = StSecpPackageFamilyNameFromFullName(PackgeFullName, &packgeFamilyName);
 
     if (-1 < return_status)
     {
+        /* Try registry lookup for SID and fall back to StSecpGetAppSid for algorithmic generation if needed */
         return_status = StSecpGetSidFromPackageFamilyName(&packgeFamilyName, ResultSid);
     }
 
@@ -2680,7 +2671,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
     UCHAR isDebugProfile = FALSE;
     longlong parameterLength = 0;
     UNICODE_STRING parameterName = {0, 0, NULL};
-    UNICODE_STRING packageFamilyName = {0, 0, NULL};
+    UNICODE_STRING sid = {0, 0, NULL};
     PWCHAR* parameters = NULL;
     UNICODE_STRING pathSegment = {0, 0, NULL};
     UNICODE_STRING remainingPath = {0, 0, NULL};
@@ -2754,7 +2745,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
     while (true)
     {
         return_status = (NTSTATUS)temp;
-        firstName = &packageFamilyName;
+        firstName = &sid;
         /* Process each segment pair */
         FsRtlDissectName(policyPath, firstName, &remainingPath);
         UVar3 = isDebugProfile;
@@ -2767,7 +2758,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
         if ((*parameterName.Buffer == L'<') &&
             (parameterName.Buffer[(ulonglong)(parameterName.Length >> 1) - 1] == L'>'))
         {
-            if ((packageFamilyName.Buffer == NULL) || (parameterCount == 2))
+            if ((sid.Buffer == NULL) || (parameterCount == 2))
             {
                 return_status = STATUS_UNSUCCESSFUL;
                 goto StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return;
@@ -2775,7 +2766,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
 
             return_status = StSecpGetParameterValue(
                 &parameterName,
-                &packageFamilyName,
+                &sid,
                 (PWCHAR*)(&parameters + maxStringLength)
             );
 
@@ -2821,7 +2812,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
 
         if (policyElement->DebugValue != NULL)
         {
-            return_status = StSecpCheckConditionalPolicy(&parameterName, &packageFamilyName, &isDebugProfile);
+            return_status = StSecpCheckConditionalPolicy(&parameterName, &sid, &isDebugProfile);
             temp = (ulonglong)(uint)return_status;
 
             if (return_status < 0)
@@ -3080,7 +3071,6 @@ StSecpOpenMasterKeyHandle(
 
     // objectAttributes._28_4_ = 0;
     // objectAttributes._4_4_ = 0;
-
     RtlInitUnicodeString(&registryPath, L"\\REGISTRY\\MACHINE\\Software\\Microsoft\\StorageSec\\Encrypt");
     // objectAttributes.RootDirectory = NULL;
     // objectAttributes.ObjectName = &registryPath;
@@ -3088,11 +3078,11 @@ StSecpOpenMasterKeyHandle(
     // objectAttributes.Attributes = 0x240;
     // objectAttributes._32_16_ = ZEXT816(0);
     InitializeObjectAttributes(
-        &objectAttributes, // p: pointer to OBJECT_ATTRIBUTES
-        &registryPath, // n: pointer to UNICODE_STRING path
-        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, // a: 0x240
-        NULL, // r: RootDirectory
-        NULL // s: SecurityDescriptor
+        &objectAttributes,
+        &registryPath,
+        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+        NULL,
+        NULL
     );
 
     return_status = ZwOpenKey(&keyHandle, 0xf003f, &objectAttributes);
@@ -3140,7 +3130,7 @@ StSecpPackageFamilyNameFromFullName(
      *   Microsoft.Office.Word_8wekyb3d8bbwe
      */
 
-    packageFamilyName = (PWCH)ExAllocatePool2(0x100, 0x82, POOL_TAG_STsp);
+    packageFamilyName = ExAllocatePool2(0x100, 0x82, POOL_TAG_STsp);
 
     if (packageFamilyName == NULL)
     {
@@ -3360,7 +3350,7 @@ StSecpSealKey(
         abCommand._4_1_ = (undefined)(cbCommand >> 8);
         /* Set up key data parameters */
         //abCommand.uStack_230 = CONCAT13((char)(UnsealedKeySize + 4 >> 8), 1);
-        abCommand.uStack_230 = ((UnsealedKeySize + 4 >> 8 ) & 0xFF) << 24 | 1;
+        abCommand.uStack_230 = ((UnsealedKeySize + 4 >> 8) & 0xFF) << 24 | 1;
         abCommand.local_228 = (char)UnsealedKeySize;
         abCommand.uStack_22c = (uint)(byte)(abCommand.local_228 + 4) | (UnsealedKeySize >> 8) << 0x18;
         abCommand._5_1_ = (undefined)cbCommand;
@@ -3419,12 +3409,11 @@ StSecpSealKey_cleanup_and_return:
  * normal cryptographic protection of the master key */
 BOOLEAN
 StSecpSealKeyTestHookSet(
-    VOID
-    )
+    VOID)
 {
     NTSTATUS status;
     //PVOID rtlQueryRegistryValuesExRoutinePtr;
-    NTSTATUS(*rtlQueryRegistryValuesExRoutinePtr)(int, short*, RTL_QUERY_REGISTRY_TABLE*, int, int);
+    NTSTATUS (*rtlQueryRegistryValuesExRoutinePtr)(int, short*, RTL_QUERY_REGISTRY_TABLE*, int, int);
     UNICODE_STRING rtlQueryRegistryValuesExRoutineName = {0, 0, NULL};
     RTL_QUERY_REGISTRY_TABLE queryTable = {
         NULL,
@@ -3534,7 +3523,8 @@ NTSTATUS StSecpUnsealKey(
         uStack_252 = 0;
         uStack_250 = 0x5701;
         //abCommand = CONCAT13((char)(cbCommand >> 0x10), CONCAT12((char)(cbCommand >> 0x18), 0x280));
-        abCommand = (0x280 & 0xFF) | ((0x280 & 0xFF00) << 8) |((cbCommand & 0xFF000000) >> 8) | ((cbCommand & 0x00FF0000) << 8);
+        abCommand = (0x280 & 0xFF) | ((0x280 & 0xFF00) << 8) | ((cbCommand & 0xFF000000) >> 8) | ((cbCommand &
+            0x00FF0000) << 8);
         uStack_254 = (undefined)(cbCommand >> 8);
         uStack_24e = 0x81;
         uStack_24c = 0x100;
@@ -3549,7 +3539,9 @@ NTSTATUS StSecpUnsealKey(
         memcpy(sealedKeyBlob, SealedKeyBlob, (ulonglong)SealedKeyBlobSize);
         /* Submits the command to the TPM for processing */
         tpmCommandResult = Tbsip_Submit_Command(tbsHContext, 0, 200, &abCommand, cbCommand, &abCommand, &local_298);
-        if ((tpmCommandResult != 0) || ((((UINT32)uStack_252 << 16) | (UINT32)uStack_250)) != 0) goto StSecpUnsealKey_cleanup_and_return;
+        if ((tpmCommandResult != 0) || ((((UINT32)uStack_252 << 16) | (UINT32)uStack_250)) != 0)
+            goto
+                StSecpUnsealKey_cleanup_and_return;
         /* Setup second TPM command */
         uStack_286 = uStack_24e;
         uStack_284 = uStack_24c;
