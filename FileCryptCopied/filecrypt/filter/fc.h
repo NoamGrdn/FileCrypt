@@ -8,9 +8,11 @@ Module Name:
 
 #ifndef __FC_H__
 #define __FC_H__
+
 #include <fltKernel.h>
 #include <ntdef.h>
-#include <windows.h>
+#include <ntddk.h>
+#include <bcrypt.h>
 
 ///
 /// Following defines are not hit in wdm,h despite compling to the same settings
@@ -447,8 +449,6 @@ EVENT_DESCRIPTOR PreReadFailure;
 EVENT_DESCRIPTOR DriverEntryFailure;
 
 /* Filter */
-
-#define FLT_REGISTRATION_VERSION 0x203
  
 ULONG gFCFlags = 0;
 
@@ -532,10 +532,11 @@ HANDLE g_DebugProfileKey = NULL;
 
 ///////////////////////////////////////////////////////////////////////////
 //
-//  Boolean stuff
+// other stuff
 //
 ///////////////////////////////////////////////////////////////////////////
 
 #define bool unsigned char
 #define true 1
 #define false 0
+#define byte UCHAR

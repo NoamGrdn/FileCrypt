@@ -8,6 +8,10 @@ Module Name:
 
 #ifndef __FC_STSEC_H__
 #define __FC_STSEC_H__
+
+
+#pragma warning(disable: 4201)
+
 #include <ntddk.h>
 #include <ntdef.h>
 #include <wdm.h>
@@ -252,20 +256,20 @@ SeConvertSecurityDescriptorToStringSecurityDescriptor(
     undefined4* param_5
 );
 
-/* ntoskrnl.exe */
-ulonglong
-SeConvertStringSecurityDescriptorToSecurityDescriptor(
-    PVOID param_1,
-    undefined8 param_2,
-    PVOID* param_3,
-    UINT64* param_4
-);
-
-/* ntoskrnl.exe */
-BOOL
-SeConvertSidToStringSid (
-    PSID Sid,
-    LPSTR* StringSid
-);
+///* ntoskrnl.exe */
+//ulonglong
+//SeConvertStringSecurityDescriptorToSecurityDescriptor(
+//    PVOID param_1,
+//    undefined8 param_2,
+//    PVOID* param_3,
+//    UINT64* param_4
+//);
+//
+///* ntoskrnl.exe */
+//BOOL
+//SeConvertSidToStringSid (
+//    PSID Sid,
+//    LPSTR* StringSid
+//);
 
 #endif /* __FC_STSEC_H__ */
