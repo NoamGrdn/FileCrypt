@@ -707,7 +707,8 @@ StSecpCacheInitialize(
 )
 {
     NTSTATUS return_status = STATUS_SUCCESS;
-    PVOID rtlQueryRegistryValuesExRoutine;
+    //PVOID rtlQueryRegistryValuesExRoutine;
+    NTSTATUS (*rtlQueryRegistryValuesExRoutine)(int, short*, RTL_QUERY_REGISTRY_TABLE*);
     UNICODE_STRING registryQueryRoutineName = {0, 0, NULL};
     RTL_QUERY_REGISTRY_TABLE queryRegTable = {
         NULL,
@@ -3416,7 +3417,8 @@ StSecpSealKeyTestHookSet(
     )
 {
     NTSTATUS status;
-    PVOID rtlQueryRegistryValuesExRoutinePtr;
+    //PVOID rtlQueryRegistryValuesExRoutinePtr;
+    NTSTATUS(*rtlQueryRegistryValuesExRoutinePtr)(int, short*, RTL_QUERY_REGISTRY_TABLE*, int, int);
     UNICODE_STRING rtlQueryRegistryValuesExRoutineName = {0, 0, NULL};
     RTL_QUERY_REGISTRY_TABLE queryTable = {
         NULL,
@@ -3525,7 +3527,8 @@ NTSTATUS StSecpUnsealKey(
         /* Setup TPM unseal command */
         uStack_252 = 0;
         uStack_250 = 0x5701;
-        _abCommand = CONCAT13((char)(cbCommand >> 0x10), CONCAT12((char)(cbCommand >> 0x18), 0x280));
+        //abCommand = CONCAT13((char)(cbCommand >> 0x10), CONCAT12((char)(cbCommand >> 0x18), 0x280));
+        abCommand = (0x280 & 0xFF) | ((0x280 & 0xFF00) << 8) |((cbCommand & 0xFF000000) >> 8) | ((cbCommand & 0x00FF0000) << 8);
         uStack_254 = (undefined)(cbCommand >> 8);
         uStack_24e = 0x81;
         uStack_24c = 0x100;
@@ -3540,13 +3543,13 @@ NTSTATUS StSecpUnsealKey(
         memcpy(sealedKeyBlob, SealedKeyBlob, (ulonglong)SealedKeyBlobSize);
         /* Submits the command to the TPM for processing */
         tpmCommandResult = Tbsip_Submit_Command(tbsHContext, 0, 200, &abCommand, cbCommand, &abCommand, &local_298);
-        if ((tpmCommandResult != 0) || (CONCAT22(uStack_250, uStack_252) != 0)) goto StSecpUnsealKey_cleanup_and_return;
+        if ((tpmCommandResult != 0) || ((((UINT32)uStack_252 << 16) | (UINT32)uStack_250)) != 0) goto StSecpUnsealKey_cleanup_and_return;
         /* Setup second TPM command */
         uStack_286 = uStack_24e;
         uStack_284 = uStack_24c;
         uStack_240 = uStack_278;
         local_298 = 0x200;
-        _abCommand = local_290;
+        abCommand = local_290;
         uStack_254 = (undefined)uStack_28c;
         uStack_253 = (undefined)((uint)uStack_28c >> 8);
         uStack_252 = (undefined2)((uint)uStack_28c >> 0x10);
