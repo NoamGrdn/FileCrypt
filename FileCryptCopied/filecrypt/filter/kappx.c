@@ -15,7 +15,6 @@ KappxGetPackageRootPathForPackageFullName(
     NTSTATUS registryStatus;
     PWCHAR packagePathBuffer;
     ULONG pathBufferSize;
-    PWCHAR nullPtr = NULL;
     ULONG resultLength = 0;
     HANDLE keyHandle = NULL;
     UNICODE_STRING registryPath = {
@@ -99,7 +98,7 @@ KappxGetPackageRootPathForPackageFullName(
     KappxGetPackageRootPathForPackageFullName_construct_path:
         pathBufferSize = (ULONG)PackageFullName->Length;
         pathBufferSize = pathBufferSize + g_PackageRootLength + 2;
-        packagePathBuffer = (PWCHAR)ExAllocatePool2(0x100, pathBufferSize, POOL_TAG_AppX);
+        packagePathBuffer = ExAllocatePool2(0x100, pathBufferSize, POOL_TAG_AppX);
         /* Combine the root path with the package name */
 
         if (((packagePathBuffer != NULL) &&
@@ -421,7 +420,7 @@ KappxGetSecurityDescriptorStringForPackageFullName(
             &packagePathString,
             OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
             NULL,
-            NULL  
+            NULL
         )
 
         // driverCreateContext._0_16_ = CONCAT142(driverCreateContext._2_14_, 0x28);

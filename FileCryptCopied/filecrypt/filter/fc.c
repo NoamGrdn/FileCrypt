@@ -586,11 +586,10 @@ NTSTATUS FCpAccessCheck(
 }
 
 
-// TODO
 NTSTATUS
 FCpEncDecrypt(
-    CUSTOM_FC_BCRYPT_DATA* BcryptAlgData,
-    CUSTOM_FC_BCRYPT_KEY_DATA* KeyHandle,
+    PCUSTOM_FC_BCRYPT_DATA BcryptAlgData,
+    PCUSTOM_FC_BCRYPT_KEY_DATA KeyHandle,
     PUCHAR PbInput,
     PUCHAR PbOutput,
     int TotalBytesToDecrypt,
@@ -598,22 +597,19 @@ FCpEncDecrypt(
     ULONG ZeroingOffest
 )
 {
-    NTSTATUS status;
-    NTSTATUS extraout_EAX;
+    NTSTATUS status = STATUS_SUCCESS;
     ulonglong chunkSize;
     BCRYPT_KEY_HANDLE keyHandle;
-    uint uVar1;
+    // TODO
+    // rename uVar1
+    uint uVar1 = 0;
     ULONG pcbResult[2];
-    CUSTOM_FC_BCRYPT_KEY_DATA* pKeyHandle;
-    PUCHAR local_68;
+    PCUSTOM_FC_BCRYPT_KEY_DATA pKeyHandle = KeyHandle;
     PVOID pbIV;
-    PVOID local_58;
     uint cypherTextSize;
 
-    uVar1 = 0;
     pcbResult[0] = 0;
-    pKeyHandle = KeyHandle;
-    local_68 = PbOutput;
+
     if ((BcryptAlgData->BlockLength == 0x10) && (ZeroingOffest != 0))
     {
         for (; TotalBytesToDecrypt != 0; TotalBytesToDecrypt = TotalBytesToDecrypt - cypherTextSize)
@@ -622,10 +618,20 @@ FCpEncDecrypt(
             chunkSize = (ulonglong)cypherTextSize;
             keyHandle = pKeyHandle->BcryptKeyHandle;
             pbIV = Parameters;
-            local_58 = Parameters;
-            status = BCryptDecrypt(keyHandle, PbInput, cypherTextSize,NULL, (PUCHAR)&pbIV, BcryptAlgData->BlockLength,
-                                   PbOutput,
-                                   cypherTextSize, pcbResult, 0);
+
+            status = BCryptDecrypt(
+                keyHandle,
+                PbInput,
+                cypherTextSize,
+                NULL,
+                (PUCHAR)&pbIV,
+                BcryptAlgData->BlockLength,
+                PbOutput,
+                cypherTextSize,
+                pcbResult,
+                0
+            );
+
             if (status < 0)
             {
                 if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
@@ -637,20 +643,21 @@ FCpEncDecrypt(
             cypherTextSize = BcryptAlgData->EncryptionSectorSize;
             chunkSize = (ulonglong)cypherTextSize;
             uVar1 = uVar1 + cypherTextSize;
+            
             if (ZeroingOffest < uVar1)
             {
-                memset(local_68 + ZeroingOffest, 0, (ulonglong)(uVar1 - ZeroingOffest));
+                memset(PbOutput + ZeroingOffest, 0, uVar1 - ZeroingOffest);
                 break;
             }
+            
             Parameters = (PVOID)((longlong)Parameters + chunkSize);
             PbOutput = PbOutput + chunkSize;
             PbInput = PbInput + chunkSize;
         }
     }
 
-    return extraout_EAX;
+    return status;
 }
-
 
 /* This function actually creates the ciphertext from the plaintext that is supposed to be written to the disk */
 NTSTATUS

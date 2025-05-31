@@ -2995,11 +2995,11 @@ StSecpInitializePolicyCache(
     // objectAttributes.RootDirectory = NULL;
     // objectAttributes._32_16_ = ZEXT816(0);
     InitializeObjectAttributes(
-        &objectAttributes, // p: pointer to OBJECT_ATTRIBUTES
-        &secDescRegistryPath, // n: pointer to the UNICODE_STRING
-        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, // a: Attributes = 0x240
-        NULL, // r: RootDirectory
-        NULL // s: SecurityDescriptor
+        &objectAttributes,
+        &secDescRegistryPath,
+        OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+        NULL,
+        NULL
     )
 
     return_status = ZwOpenKey(&registryKeyHandle, 0x20019, &objectAttributes);
@@ -3028,11 +3028,11 @@ StSecpInitializePolicyCache(
             // objectAttributes._24_8_ = CONCAT44(objectAttributes._28_4_, 0x240);
             // objectAttributes._32_16_ = ZEXT816(0);
             InitializeObjectAttributes(
-                &objectAttributes, // p: pointer to OBJECT_ATTRIBUTES
-                &secDescRegistryPath, // n: pointer to the UNICODE_STRING
-                OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, // a: Attributes = 0x240
-                NULL, // r: RootDirectory
-                NULL // s: SecurityDescriptor
+                &objectAttributes,
+                &secDescRegistryPath,
+                OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                NULL,
+                NULL
             )
 
             return_status = ZwOpenKey(&registryKeyHandle, 0x20019, &objectAttributes);
