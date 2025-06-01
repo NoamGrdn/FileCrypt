@@ -37,13 +37,14 @@ Module Name:
 ///////////////////////////////////////////////////////////////////////////
 
 /* typedefs for Ghidra types */
-typedef long long undefined8;
-typedef long undefined, undefined4;
+typedef unsigned long long undefined8;
+typedef unsigned int undefined4;
+typedef unsigned char undefined, undefined1;
 typedef long long longlong;
 typedef unsigned long long ulonglong;
 typedef unsigned int uint;
 typedef unsigned short ushort;
-typedef unsigned char undefined2;
+typedef unsigned short undefined2;
 
 /* Holds AES-CBC encryption settings - 24 bytes in length */
 typedef struct _CUSTOM_FC_BCRYPT_DATA
@@ -445,61 +446,61 @@ EVENT_DESCRIPTOR DriverEntryFailure;
 
 /* Filter */
  
-ULONG gFCFlags = 0;
+EXTERN_C __declspec(selectany) ULONG gFCFlags = 0;
 
 #define EncryptMediaFlagBit                0x02
 #define EncryptAllFlagBit                  0x04
 #define FilterEmulatedExternalDriveFlagBit 0x08
 #define BypassAccessChecksFlagBit          0x10
-ULONG FcDebugTraceLevel = 0;
+EXTERN_C __declspec(selectany) ULONG FcDebugTraceLevel = 0;
 
-UNICODE_STRING gMusicPath = {0xe, 0x10, L"\\Music\\"};
-UNICODE_STRING gPicturesPath = {0x14, 0x16, L"\\Pictures\\"};
-UNICODE_STRING gVideosPath = {0x10, 0x12, L"\\Videos\\"};
+EXTERN_C __declspec(selectany) UNICODE_STRING gMusicPath = {0xe, 0x10, L"\\Music\\"};
+EXTERN_C __declspec(selectany) UNICODE_STRING gPicturesPath = {0x14, 0x16, L"\\Pictures\\"};
+EXTERN_C __declspec(selectany) UNICODE_STRING gVideosPath = {0x10, 0x12, L"\\Videos\\"};
 
-UNICODE_STRING gRegistryPath = {0, 0, NULL};
-PFLT_GENERIC_WORKITEM g_WorkItem;
-PVOID g_FilterObject;
-PFLT_FILTER gFilterHandle;
+EXTERN_C __declspec(selectany) UNICODE_STRING gRegistryPath = {0, 0, NULL};
+EXTERN_C __declspec(selectany) PFLT_GENERIC_WORKITEM g_WorkItem;
+EXTERN_C __declspec(selectany) PVOID g_FilterObject;
+EXTERN_C __declspec(selectany) PFLT_FILTER gFilterHandle;
 
-ULONG g_WorkItemQueued;
+EXTERN_C __declspec(selectany) ULONG g_WorkItemQueued;
 
-NPAGED_LOOKASIDE_LIST gPre2PostIoContextList;
-NPAGED_LOOKASIDE_LIST gPre2PostCreateContextList;
-NPAGED_LOOKASIDE_LIST gShadowBufferList;
+EXTERN_C __declspec(selectany) NPAGED_LOOKASIDE_LIST gPre2PostIoContextList;
+EXTERN_C __declspec(selectany) NPAGED_LOOKASIDE_LIST gPre2PostCreateContextList;
+EXTERN_C __declspec(selectany) NPAGED_LOOKASIDE_LIST gShadowBufferList;
 
 /* Package */
 
-ULONG g_PackageRootLength = 0;
-PWCHAR g_PackageRoot = NULL;
+EXTERN_C __declspec(selectany) ULONG g_PackageRootLength = 0;
+EXTERN_C __declspec(selectany) PWCHAR g_PackageRoot = NULL;
 
 /* Security */
 
-FAST_MUTEX g_StSecKeyMutex;
-ULONG _g_CacheMaxSize;
-ULONG _g_CacheCleanupTriggerSize;
-ULONG64 g_CacheLifetime;
+EXTERN_C __declspec(selectany) FAST_MUTEX g_StSecKeyMutex;
+EXTERN_C __declspec(selectany) ULONG _g_CacheMaxSize;
+EXTERN_C __declspec(selectany) ULONG _g_CacheCleanupTriggerSize;
+EXTERN_C __declspec(selectany) ULONG64 g_CacheLifetime;
 
-PCUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY g_StSecSecurityDescriptorCacheListHead = NULL;
-PCUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY g_StSecSecurityDescriptorCacheListTail = NULL;
+EXTERN_C __declspec(selectany) PCUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY g_StSecSecurityDescriptorCacheListHead = NULL;
+EXTERN_C __declspec(selectany) PCUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY g_StSecSecurityDescriptorCacheListTail = NULL;
 
-PCUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY g_StSecFolderPropertyCacheListHead = NULL;
-PCUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY g_StSecFolderPropertyCacheListTail = NULL;
+EXTERN_C __declspec(selectany) PCUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY g_StSecFolderPropertyCacheListHead = NULL;
+EXTERN_C __declspec(selectany) PCUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY g_StSecFolderPropertyCacheListTail = NULL;
 
-RTL_GENERIC_TABLE g_StSecCacheGenericTable;
+EXTERN_C __declspec(selectany) RTL_GENERIC_TABLE g_StSecCacheGenericTable;
 
-BCRYPT_ALG_HANDLE g_HmacHashProvider = NULL;
-BCRYPT_ALG_HANDLE g_HashProvider = NULL;
-PUCHAR g_cbHashObject = NULL;
-PUCHAR g_cbHashValue = NULL;
-ULONG g_cbHashOutputLength = 0;
-ULONG g_cbHashObjectLength = 0;
+EXTERN_C __declspec(selectany) BCRYPT_ALG_HANDLE g_HmacHashProvider = NULL;
+EXTERN_C __declspec(selectany) BCRYPT_ALG_HANDLE g_HashProvider = NULL;
+EXTERN_C __declspec(selectany) PUCHAR g_cbHashObject = NULL;
+EXTERN_C __declspec(selectany) PUCHAR g_cbHashValue = NULL;
+EXTERN_C __declspec(selectany) ULONG g_cbHashOutputLength = 0;
+EXTERN_C __declspec(selectany) ULONG g_cbHashObjectLength = 0;
 
-PUCHAR g_MasterKey = NULL;
-BOOLEAN g_MasterKeyPersisted = FALSE;
-BOOLEAN g_SkipSealKey = FALSE;
+EXTERN_C __declspec(selectany) PUCHAR g_MasterKey = NULL;
+EXTERN_C __declspec(selectany) BOOLEAN g_MasterKeyPersisted = FALSE;
+EXTERN_C __declspec(selectany) BOOLEAN g_SkipSealKey = FALSE;
 
-HANDLE g_DebugProfileKey = NULL;
+EXTERN_C __declspec(selectany) HANDLE g_DebugProfileKey = NULL;
 
 #endif /* __FC_H__ */
 

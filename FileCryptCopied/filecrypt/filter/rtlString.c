@@ -1,7 +1,8 @@
-﻿#include <corecrt_wstdio.h>
+﻿/*#include <crtdefs.h>
+#include <ntddk.h>
 #include "rtlString.h"
 
-/* This function concatenates (appends) one byte-counted wide-character string to another */
+// This function concatenates (appends) one byte-counted wide-character string to another
 NTSTATUS
 RtlStringCbCatNW (
   PWCHAR Destination,
@@ -19,10 +20,10 @@ RtlStringCbCatNW (
   SIZE_T remainingCharacters;
   SIZE_T offsetToSource;
   
-  /* Check if can the buffer size fit in a 32-bit signed int */
+  // Check if can the buffer size fit in a 32-bit signed int
   if (charsInDestBuffer - 1 < 0x7fffffff) {
     do {
-      /* Find the end of the existing string */
+      // Find the end of the existing string
       if (*currentPosition == L'\0')
       {
         break;
@@ -34,7 +35,7 @@ RtlStringCbCatNW (
     
     return_status = STATUS_INVALID_PARAMETER;
     
-    /* If we didn't find null terminator, return error */
+    // If we didn't find null terminator, return error
     if (destCharactersRemaining != 0) {
       maxCharactersToAppend = charsInDestBuffer - destCharactersRemaining;
       
@@ -88,7 +89,7 @@ RtlStringCbCatNW (
   return return_status;
 }
 
-/* This function concatenates (appends) a source string to a destination string */
+// This function concatenates (appends) a source string to a destination string
 NTSTATUS
 RtlStringCbCatW (
   PWCHAR Destination,
@@ -122,7 +123,7 @@ RtlStringCbCatW (
   return return_status;
 }
 
-/* This function copies wide-character strings with size parameters specified in bytes rather than characters */
+// This function copies wide-character strings with size parameters specified in bytes rather than characters
 NTSTATUS
 RtlStringCbCopyNW(
   PWCHAR Destination,
@@ -131,9 +132,9 @@ RtlStringCbCopyNW(
   SIZE_T MaxCharactersToCopy
   )
 {
-  /* Check if destination buffer size (in characters) fits in a 32-bit value */
+  // Check if destination buffer size (in characters) fits in a 32-bit value
   if ((DestinationSize >> 1) - 1 < 0x7fffffff) {
-    /* Check if source buffer size (in characters) fits in a 32-bit value */
+    // Check if source buffer size (in characters) fits in a 32-bit value
     if (MaxCharactersToCopy >> 1 < 0x7fffffff) {
       return RtlStringCopyWorkerW(
         Destination,
@@ -143,14 +144,14 @@ RtlStringCbCopyNW(
         MaxCharactersToCopy >> 1
         );
     }
-    /* If source size is too large, null-terminate destination */
+    // If source size is too large, null-terminate destination
     *Destination = L'\0';
   }
   
   return STATUS_INVALID_PARAMETER;
 }
 
-/* This function copies a wide-character string */
+// This function copies a wide-character string
 NTSTATUS
 RtlStringCbCopyW (
   PWCHAR Destination,
@@ -165,7 +166,7 @@ RtlStringCbCopyW (
   SSIZE_T maxSourceLength;
      
   if (charsInDestBuffer - 1 < 0x7fffffff) {
-    /* 0x7ffffffe is close to INT_MAX, which is the maximum allowed string length */
+    // 0x7ffffffe is close to INT_MAX, which is the maximum allowed string length
     maxSourceLength = 0x7ffffffe - charsInDestBuffer;
     offsetToSource = (longlong)Source - (longlong)Destination;
     do {
@@ -183,7 +184,7 @@ RtlStringCbCopyW (
     if (charsInDestBuffer != 0) {
       terminationPoin = Destination;
     }
-    /* Always null-terminate the string */
+    // Always null-terminate the string
     *terminationPoin = L'\0';
     return_status = STATUS_BUFFER_OVERFLOW;
     
@@ -202,7 +203,7 @@ RtlStringCbCopyW (
   return return_status;
 }
 
-/* The function determines the length of a byte-counted wide-character string in bytes */
+// The function determines the length of a byte-counted wide-character string in bytes
 NTSTATUS
 RtlStringCbLengthW (
   PCWCHAR StringToCount,
@@ -219,7 +220,7 @@ RtlStringCbLengthW (
     characterCount = 0;
   }
   else {
-    /* Start with maximum allowed string length */
+    // Start with maximum allowed string length
     remainingCharacters = 0x7fffffff;
     do {
       if (*StringToCount == L'\0')
@@ -250,7 +251,7 @@ RtlStringCbLengthW (
   return return_status;
 }
 
-/* This function provides a safer alternative to standard printf functions for wide-character strings */
+// This function provides a safer alternative to standard printf functions for wide-character strings
 NTSTATUS
 RtlStringCbPrintfW (
   PWCHAR Destination,
@@ -259,18 +260,18 @@ RtlStringCbPrintfW (
   va_list FormattingArgs
   )
 {
-  int numOfcharactersWritten;
   NTSTATUS return_status;
+  int numOfcharactersWritten;
   SIZE_T maxCharacters = DestinationSizeInBytes >> 1;
   va_list args;
   size_t maxCharactersToWrite;
   
   if (maxCharacters - 1 < 0x7fffffff) {
-    /* Reserve space for null terminator */
+    // Reserve space for null terminator
     maxCharactersToWrite = maxCharacters - 1;
     args = FormattingArgs;
-    /* Number of chars written not including null terminator */
-    numOfcharactersWritten = _vsnwprintf(Destination,maxCharactersToWrite,PrintfFormat,(va_list)&args);
+    // Number of chars written not including null terminator
+    numOfcharactersWritten = _snwprintf(Destination,maxCharactersToWrite,PrintfFormat,(va_list)&args);
     
     if (numOfcharactersWritten < 0 || maxCharactersToWrite < (ulonglong)(longlong)numOfcharactersWritten) {
       Destination[maxCharactersToWrite] = L'\0';
@@ -287,7 +288,7 @@ RtlStringCbPrintfW (
   }
   else {
     return_status = STATUS_INVALID_PARAMETER;
-    /* If we have at least one character of space, null-terminate */
+    // If we have at least one character of space, null-terminate
     if (maxCharacters != 0) {
       *Destination = L'\0';
     }
@@ -296,8 +297,8 @@ RtlStringCbPrintfW (
   return return_status;
 }
 
-/* This function copies a wide-character string from source to destination
- * "Cch" in the name indicates it's a character-counted function (as opposed to byte-counted). */
+// This function copies a wide-character string from source to destination
+// "Cch" in the name indicates it's a character-counted function (as opposed to byte-counted).
 NTSTATUS
 RtlStringCchCopyW (
   PWCHAR Destination,
@@ -349,7 +350,7 @@ RtlStringCchCopyW (
   return return_status;
 }
 
-/* This function safely copies a wide-character string */
+// This function safely copies a wide-character string
 NTSTATUS
 RtlStringCopyWorkerW (
   PWCHAR Destination,
@@ -394,7 +395,7 @@ RtlStringCopyWorkerW (
   return return_status;
 }
 
-/* This function measures the length of a wide-character string */
+// This function measures the length of a wide-character string
 NTSTATUS
 RtlStringLengthWorkerW (
   PWCHAR StringToCount,
@@ -422,7 +423,7 @@ RtlStringLengthWorkerW (
     return_status = 0;
   }
   
-  /* If output parameter was provided, calculate and return the length */
+  // If output parameter was provided, calculate and return the length
   if (ResultLength != NULL) {
     if (remainingCharacters == 0) {
       *ResultLength = 0;
@@ -432,4 +433,4 @@ RtlStringLengthWorkerW (
   }
   
   return return_status;
-}
+}*/

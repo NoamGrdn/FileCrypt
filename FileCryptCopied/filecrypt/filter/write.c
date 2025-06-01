@@ -1,4 +1,38 @@
-﻿#include "write.h"
+﻿#pragma warning(disable: 4100)
+
+#include "write.h"
+
+int __cdecl _flswbuf(int _Ch, FILE* _File)
+
+{
+    _File->_flag = _File->_flag | 0x20;
+    return 0xffff;
+}
+
+wint_t __cdecl _fputwc_nolock(wchar_t _Ch, FILE* _File)
+
+{
+    int* piVar1;
+    int iVar2;
+
+    if (_File == (FILE*)0x0) {
+        _guard_check_icall(0);
+        _Ch = L'\xffff';
+    }
+    else {
+        piVar1 = &_File->_cnt;
+        *piVar1 = *piVar1 + -2;
+        if (*piVar1 < 0) {
+            iVar2 = _flswbuf((unsigned int)(unsigned short)_Ch, _File);
+            _Ch = (wchar_t)iVar2;
+        }
+        else {
+            *(wchar_t*)_File->_ptr = _Ch;
+            _File->_ptr = _File->_ptr + 2;
+        }
+    }
+    return _Ch;
+}
 
 /* This function is a helper function for writing a single wide character to a file stream */
 void

@@ -9,9 +9,9 @@ Module Name:
 #ifndef __FC_MC_H__
 #define __FC_MC_H__
 
-#include <evntprov.h>
 #include <ntdef.h>
 #include "fc.h"
+#include <evntprov.h>
 
 void
 McGenControlCallbackV2 (
@@ -48,7 +48,7 @@ McTemplateK0d_EtwWriteTransfer (
     undefined8 param_1,
     PCEVENT_DESCRIPTOR EventDescriptor,
     undefined8 param_3,
-    undefined4 param_4
+    NTSTATUS param_4
     );
 
 void
@@ -66,7 +66,7 @@ McTemplateK0zd_EtwWriteTransfer (
     undefined8 param_2,
     undefined8 param_3,
     wchar_t *param_4,
-    undefined param_5
+    NTSTATUS param_5
     );
 
 void

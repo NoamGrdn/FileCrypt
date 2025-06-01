@@ -1,6 +1,21 @@
-﻿#include "kappx.h"
+﻿#pragma warning(disable: 4047)
+#pragma warning(disable: 4024)
+#pragma warning(disable: 4133)
+#pragma warning(disable: 4189)
+#pragma warning(disable: 4100)
+#pragma warning(disable: 4152)
+#pragma warning(disable: 4022)
+#pragma warning(disable: 4242)
+#pragma warning(disable: 4146)
+#pragma warning(disable: 4113)
+#pragma warning(disable: 4244)
+#pragma warning(disable: 4701)
+#pragma warning(disable: 4700)
+#pragma warning(disable: 4703)
+
+#include "kappx.h"
 #include "fc.h"
-#include "rtlString.h"
+#include <ntstrsafe.h>
 #include "stsec.h"
 
 

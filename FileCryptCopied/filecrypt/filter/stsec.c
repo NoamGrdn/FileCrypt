@@ -1,11 +1,28 @@
-﻿#include "stsec.h"
+﻿#pragma warning(disable: 4047)
+#pragma warning(disable: 4024)
+#pragma warning(disable: 4133)
+#pragma warning(disable: 4189)
+#pragma warning(disable: 4100)
+#pragma warning(disable: 4152)
+#pragma warning(disable: 4022)
+#pragma warning(disable: 4242)
+#pragma warning(disable: 4146)
+#pragma warning(disable: 4113)
+#pragma warning(disable: 4244)
+#pragma warning(disable: 4701)
+#pragma warning(disable: 4700)
+#pragma warning(disable: 4703)
+#pragma warning(disable: 4101)
+#pragma warning(disable: 4995)
+
+#include "stsec.h"
 #include <intrin.h>
 #include <wdm.h>
 #include <tbs.h>
 #include <bcrypt.h>
 
 #include "kappx.h"
-#include "rtlString.h"
+#include <ntstrsafe.h>
 
 VOID
 StSecDeinitialize(
@@ -313,7 +330,7 @@ StSecGetSecurityDescriptor(
 StSecGetSecurityDescriptor_set_output_params:
     paramName = tempString;
     return_status = 0;
-    *OutChamberType = (ULONG)securityDescString;
+    *OutChamberType = securityDescString;
     *OutChamberId = paramName.Buffer;
 StSecGetSecurityDescriptor_cleanup_and_return:
     if (chamberId != NULL)
@@ -441,7 +458,7 @@ StSecpAddChamberProfileKey(
     ULONG64 currentSystemTime;
     PWCHAR oldestCacheEntryChamberId;
 
-    strCountStatus = RtlStringCbLengthW(ChamberId, InstallSecretKey, &chamberIdStringLength);
+    strCountStatus = RtlStringCbLengthW(ChamberId, InstallSecretKey, (size_t*) & chamberIdStringLength);
 
     if (strCountStatus < 0)
     {
@@ -739,7 +756,7 @@ StSecpCacheInitialize(
         }
 
         /* Read configuration from the registry under the key HKLM\SYSTEM\StSec */
-        return_status = rtlQueryRegistryValuesExRoutine(2, L"StSec", &queryRegTable);
+        return_status = rtlQueryRegistryValuesExRoutine(2, (short *)L"StSec", &queryRegTable);
 
         if (((return_status + 0x80000000U & 0x80000000) != 0) || (filter = g_FilterObject, return_status == -
             0x3fffffcc))
@@ -970,7 +987,7 @@ StSecpDeriveChamberProfileKey(
         }
 
         pbChamberIdInput = ChamberId;
-        return_status = RtlStringCbLengthW(ChamberId, phMasterKeyHash, &chamberIdLength);
+        return_status = RtlStringCbLengthW(ChamberId, phMasterKeyHash, (size_t*) & chamberIdLength);
 
         if (return_status < 0)
         {
@@ -1116,7 +1133,7 @@ StSecpDeriveChamberProfileKey_return_and_cleanup:
  */
 PCUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY
 StSecpFindFolderPropertyPolicyElement(
-    PUNICODE_STRING Path
+    PCUNICODE_STRING Path
 )
 {
     int compResult = -1;
@@ -2551,7 +2568,7 @@ StSecpGetSidFromPackageFamilyName(
 
 NTSTATUS
 StSecpGetSidFromPackageFullName(
-    PUNICODE_STRING PackgeFullName,
+    PCUNICODE_STRING PackgeFullName,
     PWCHAR* ResultSid
 )
 {
@@ -2662,7 +2679,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
     PWCHAR currentChar;
     PUNICODE_STRING firstName;
     ulonglong halfOutputLength = 0;
-    ulonglong temp;
+    NTSTATUS temp;
     ulonglong totalOutputLength;
     PWCHAR** parametersValues;
     uint parameterCount;
@@ -2838,7 +2855,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
     }
     if (isDebugProfile != '\0')
     {
-        return_status = RtlStringCbLengthW(policyElement->DebugValue, firstName, &parameterLength);
+        return_status = RtlStringCbLengthW(policyElement->DebugValue, firstName, (size_t*) & parameterLength);
 
         if (return_status < 0)
         {
@@ -3104,7 +3121,7 @@ StSecpOpenMasterKeyHandle(
 
 NTSTATUS
 StSecpPackageFamilyNameFromFullName(
-    PUNICODE_STRING PackageFullName,
+    PCUNICODE_STRING PackageFullName,
     PUNICODE_STRING OutPackageFamilyName
 )
 {
@@ -3304,7 +3321,7 @@ StSecpSealKey(
     void* masterKey;
     ulonglong unsealedKeySize;
     UINT32 cbCommand;
-    undefined auStackY_2c8[32];
+    UINT8 auStackY_2c8[32];
     UINT32 pcbResult;
     TBS_HCONTEXT tbsHContext;
     TBS_CONTEXT_PARAMS2 contextParams2;
@@ -3350,7 +3367,7 @@ StSecpSealKey(
         abCommand._4_1_ = (undefined)(cbCommand >> 8);
         /* Set up key data parameters */
         //abCommand.uStack_230 = CONCAT13((char)(UnsealedKeySize + 4 >> 8), 1);
-        abCommand.uStack_230 = ((UnsealedKeySize + 4 >> 8) & 0xFF) << 24 | 1;
+        abCommand.uStack_230 = (((UnsealedKeySize + 4) >> 8) & 0xFF) << 24 | 1;
         abCommand.local_228 = (char)UnsealedKeySize;
         abCommand.uStack_22c = (uint)(byte)(abCommand.local_228 + 4) | (UnsealedKeySize >> 8) << 0x18;
         abCommand._5_1_ = (undefined)cbCommand;
@@ -3437,7 +3454,7 @@ StSecpSealKeyTestHookSet(
 
     status = rtlQueryRegistryValuesExRoutinePtr(
         0,
-        L"\\REGISTRY\\MACHINE\\Software\\Microsoft\\StorageSec\\Encrypt",
+        (short*)L"\\REGISTRY\\MACHINE\\Software\\Microsoft\\StorageSec\\Encrypt",
         &queryTable,
         0,
         0
@@ -3464,7 +3481,7 @@ NTSTATUS StSecpUnsealKey(
     BOOLEAN skipSealKey;
     TBS_RESULT contextCreateResult;
     TBS_RESULT tpmCommandResult;
-    NTSTATUS return_status;
+    NTSTATUS return_status = 0;
     //undefined7 extraout_var;
     UINT32 cbCommand;
     undefined auStackY_2d8[32];
@@ -3481,7 +3498,7 @@ NTSTATUS StSecpUnsealKey(
     undefined2 uStack_278;
     TBS_HCONTEXT tbsHContext;
     TBS_CONTEXT_PARAMS2 contextParams2;
-    BYTE abCommand;
+    /*BYTE abCommand;
     undefined uStack_254;
     undefined uStack_253;
     undefined2 uStack_252;
@@ -3495,7 +3512,8 @@ NTSTATUS StSecpUnsealKey(
     undefined2 uStack_242;
     undefined2 uStack_240;
     undefined local_23e;
-    undefined sealedKeyBlob[485];
+    undefined sealedKeyBlob[485];*/
+    CUSTOM_FC_TPM_UNSEAL_COMMAND abCommand;
     ulonglong sec_cookie_xor;
 
     local_290 = 0x280;
@@ -3520,53 +3538,53 @@ NTSTATUS StSecpUnsealKey(
             (contextCreateResult = Tbsi_Context_Create(&contextParams2, &tbsHContext), contextCreateResult != 0))
             goto StSecpUnsealKey_cleanup_and_return;
         /* Setup TPM unseal command */
-        uStack_252 = 0;
-        uStack_250 = 0x5701;
+        abCommand.uStack_252 = 0;
+        abCommand.uStack_250 = 0x5701;
         //abCommand = CONCAT13((char)(cbCommand >> 0x10), CONCAT12((char)(cbCommand >> 0x18), 0x280));
-        abCommand = (0x280 & 0xFF) | ((0x280 & 0xFF00) << 8) | ((cbCommand & 0xFF000000) >> 8) | ((cbCommand &
+        abCommand.abCommand = (0x280 & 0xFF) | ((0x280 & 0xFF00) << 8) | ((cbCommand & 0xFF000000) >> 8) | ((cbCommand &
             0x00FF0000) << 8);
-        uStack_254 = (undefined)(cbCommand >> 8);
-        uStack_24e = 0x81;
-        uStack_24c = 0x100;
-        bStack_24a = 0;
-        bStack_249 = 0;
-        uStack_248 = 0x900;
-        uStack_246 = 0x9000040;
-        uStack_242 = 0;
-        uStack_240 = 1;
-        local_23e = 0;
-        uStack_253 = (undefined)cbCommand;
-        memcpy(sealedKeyBlob, SealedKeyBlob, (ulonglong)SealedKeyBlobSize);
+        abCommand.uStack_254 = (undefined)(cbCommand >> 8);
+        abCommand.uStack_24e = 0x81;
+        abCommand.uStack_24c = 0x100;
+        abCommand.bStack_24a = 0;
+        abCommand.bStack_249 = 0;
+        abCommand.uStack_248 = 0x900;
+        abCommand.uStack_246 = 0x9000040;
+        abCommand.uStack_242 = 0;
+        abCommand.uStack_240 = 1;
+        abCommand.local_23e = 0;
+        abCommand.uStack_253 = (undefined)cbCommand;
+        memcpy(abCommand.sealedKeyBlob, SealedKeyBlob, (ulonglong)SealedKeyBlobSize);
         /* Submits the command to the TPM for processing */
         tpmCommandResult = Tbsip_Submit_Command(tbsHContext, 0, 200, &abCommand, cbCommand, &abCommand, &local_298);
-        if ((tpmCommandResult != 0) || ((((UINT32)uStack_252 << 16) | (UINT32)uStack_250)) != 0)
+        if ((tpmCommandResult != 0) || ((((UINT32)abCommand.uStack_252 << 16) | (UINT32)abCommand.uStack_250)) != 0)
             goto
                 StSecpUnsealKey_cleanup_and_return;
         /* Setup second TPM command */
-        uStack_286 = uStack_24e;
-        uStack_284 = uStack_24c;
-        uStack_240 = uStack_278;
+        uStack_286 = abCommand.uStack_24e;
+        uStack_284 = abCommand.uStack_24c;
+        abCommand.uStack_240 = uStack_278;
         local_298 = 0x200;
-        abCommand = local_290;
-        uStack_254 = (undefined)uStack_28c;
-        uStack_253 = (undefined)((uint)uStack_28c >> 8);
-        uStack_252 = (undefined2)((uint)uStack_28c >> 0x10);
-        uStack_250 = uStack_288;
-        bStack_24a = (byte)uStack_282;
-        bStack_249 = (byte)((ushort)uStack_282 >> 8);
-        uStack_248 = uStack_280;
-        uStack_246 = uStack_27e;
-        uStack_242 = uStack_27a;
-        local_23e = 0;
+        abCommand.abCommand = local_290;
+        abCommand.uStack_254 = (undefined)uStack_28c;
+        abCommand.uStack_253 = (undefined)((uint)uStack_28c >> 8);
+        abCommand.uStack_252 = (undefined2)((uint)uStack_28c >> 0x10);
+        abCommand.uStack_250 = uStack_288;
+        abCommand.bStack_24a = (byte)uStack_282;
+        abCommand.bStack_249 = (byte)((ushort)uStack_282 >> 8);
+        abCommand.uStack_248 = uStack_280;
+        abCommand.uStack_246 = uStack_27e;
+        abCommand.uStack_242 = uStack_27a;
+        abCommand.local_23e = 0;
         /* Submit second TPM command */
         tpmCommandResult = Tbsip_Submit_Command(tbsHContext, 0, 200, &abCommand, 0x1b, &abCommand, &local_298);
         if (tpmCommandResult != 0) goto StSecpUnsealKey_cleanup_and_return;
         /* Extract unsealed key size and data */
-        SealedKeyBlobSize = (uint)bStack_24a * 0x100 + (uint)bStack_249;
+        SealedKeyBlobSize = (uint)abCommand.bStack_24a * 0x100 + (uint)abCommand.bStack_249;
         if ((OutUnsealedKey != NULL) && (SealedKeyBlobSize <= *OutUnsealedKeySize))
         {
             /* Copy unsealed key to output buffer if size permits */
-            memcpy(OutUnsealedKey, &uStack_248, (ulonglong)SealedKeyBlobSize);
+            memcpy(OutUnsealedKey, &abCommand.uStack_248, (ulonglong)SealedKeyBlobSize);
         }
     }
     else if ((OutUnsealedKey != NULL) && (SealedKeyBlobSize <= *OutUnsealedKeySize))

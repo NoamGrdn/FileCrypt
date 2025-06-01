@@ -13,7 +13,7 @@ Module Name:
 #include "fc.h"
 
 
-wchar_t
+/*wchar_t
 RtlAnsiCharToUnicodeChar(
     int* ptr
 );
@@ -84,6 +84,6 @@ RtlStringLengthWorkerW(
     PWCHAR StringToCount,
     SIZE_T MaxCharactersToCheck,
     long long* ResultLength
-);
+);*/
 
 #endif /* __FC_RTL_STRING_H__ */

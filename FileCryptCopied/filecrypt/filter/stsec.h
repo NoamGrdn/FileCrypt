@@ -12,11 +12,10 @@ Module Name:
 
 #pragma warning(disable: 4201)
 
+#include "fc.h"
 #include <ntddk.h>
 #include <ntdef.h>
 #include <wdm.h>
-
-#include "fc.h"
 
 typedef union CUSTOM_FC_TPM_SEAL_COMMAND {
     struct {
@@ -24,20 +23,44 @@ typedef union CUSTOM_FC_TPM_SEAL_COMMAND {
          UCHAR _4_1_;               // Another part of a header?
          UCHAR _5_1_;               // Another part of a header!
          UINT16 _6_2_;              // Some sort of response code
-         undefined2 uStack_240;
-         undefined2 uStack_23e;
-         undefined4 uStack_23c;
-         undefined4 local_238;
-         undefined4 uStack_234;
-         undefined4 uStack_230;
+         UINT16 uStack_240;
+         UINT16 uStack_23e;
+         UINT32 uStack_23c;
+         UINT32 local_238;
+         UINT32 uStack_234;
+         UINT32 uStack_230;
          UINT32 uStack_22c;
          CHAR local_228;
-         undefined4 commandBuffer[3];
-         undefined8 uStack_21b;
-         undefined2 auStack_213[229];
+         UINT32 commandBuffer[3];
+         UINT64 uStack_21b;
+         UINT16 auStack_213[229];
     };
     UCHAR rawBuffer[0x200];        // 0x200 buffer
 } CUSTOM_FC_TPM_SEAL_COMMAND;
+
+typedef union CUSTOM_FC_TPM_UNSEAL_COMMAND {
+    struct {
+        UINT8 abCommand;
+        UINT8 uStack_254;
+        UINT8 uStack_253;
+        // UINT8 padding_byte // Here is a padding of 1 byte
+        UINT16 uStack_252;
+        UINT16 uStack_250;
+        UINT16 uStack_24e;
+        UINT16 uStack_24c;
+        UINT8 bStack_24a;
+        UINT8 bStack_249;
+        UINT16 uStack_248;
+        UINT32 uStack_246;
+        UINT16 uStack_242;
+        UINT16 uStack_240;
+        UINT8 local_23e;
+        UINT8 sealedKeyBlob[485];
+        // UINT8 padding_byte // Here is a padding of 1 byte
+        // UINT8 padding_byte // Here is a padding of 1 byte
+    };
+    UCHAR rawBuffer[0x200];        // 0x200 buffer
+} CUSTOM_FC_TPM_UNSEAL_COMMAND;
 
 VOID
 StSecDeinitialize(
@@ -118,7 +141,7 @@ StSecpDeriveChamberProfileKey(
 
 PCUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY
 StSecpFindFolderPropertyPolicyElement(
-    PUNICODE_STRING Path
+    PCUNICODE_STRING Path
 );
 
 PCUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY
@@ -177,7 +200,7 @@ StSecpGetSidFromPackageFamilyName(
 
 NTSTATUS
 StSecpGetSidFromPackageFullName(
-    PUNICODE_STRING PackgeFullName,
+    PCUNICODE_STRING PackgeFullName,
     PWCHAR* ResultSid
 );
 
@@ -210,7 +233,7 @@ StSecpOpenMasterKeyHandle(
 
 NTSTATUS
 StSecpPackageFamilyNameFromFullName(
-    PUNICODE_STRING PackageFullName,
+    PCUNICODE_STRING PackageFullName,
     PUNICODE_STRING OutPackageFamilyName
 );
 
@@ -253,23 +276,23 @@ SeConvertSecurityDescriptorToStringSecurityDescriptor(
     int param_2,
     int param_3,
     undefined8* param_4,
-    undefined4* param_5
+    ULONG* param_5
 );
 
 ///* ntoskrnl.exe */
-//ulonglong
-//SeConvertStringSecurityDescriptorToSecurityDescriptor(
-//    PVOID param_1,
-//    undefined8 param_2,
-//    PVOID* param_3,
-//    UINT64* param_4
-//);
-//
+ulonglong
+SeConvertStringSecurityDescriptorToSecurityDescriptor(
+    PVOID param_1,
+    undefined8 param_2,
+    PVOID* param_3,
+    UINT64* param_4
+);
+
 ///* ntoskrnl.exe */
-//BOOL
-//SeConvertSidToStringSid (
-//    PSID Sid,
-//    LPSTR* StringSid
-//);
+bool
+SeConvertSidToStringSid (
+    PSID Sid,
+    LPSTR* StringSid
+);
 
 #endif /* __FC_STSEC_H__ */

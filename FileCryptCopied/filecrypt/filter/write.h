@@ -9,7 +9,8 @@ Module Name:
 #ifndef __FC_MC_H__
 #define __FC_MC_H__
 
-#include <stdio.h>
+#include <ntddk.h>
+#include <ntstrsafe.h>
 
 void
 write_char(

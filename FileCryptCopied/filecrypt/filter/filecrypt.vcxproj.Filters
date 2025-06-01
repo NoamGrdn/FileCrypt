@@ -19,16 +19,47 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="filecrypt.c">
+    <ClCompile Include="fc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="kappx.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="m.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="rtlString.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="stsec.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="write.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="filecrypt.rc">
-      <Filter>Resource Files</Filter>
-    </ResourceCompile>
-  </ItemGroup>
-  <ItemGroup>
+    <ClInclude Include="*.h;*.hpp;*.hxx;*.hm;*.inl;*.xsd">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="*.h;*.hpp;*.hxx;*.hm;*.inl;*.xsd">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="*.h;*.hpp;*.hxx;*.hm;*.inl;*.xsd">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="*.h;*.hpp;*.hxx;*.hm;*.inl;*.xsd">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="*.h;*.hpp;*.hxx;*.hm;*.inl;*.xsd">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="*.h;*.hpp;*.hxx;*.hm;*.inl;*.xsd">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="*.h;*.hpp;*.hxx;*.hm;*.inl;*.xsd">
       <Filter>Header Files</Filter>
     </ClInclude>
