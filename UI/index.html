@@ -11,6 +11,156 @@
 </head>
 <body>
 <div id="root"></div>
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        color: #333;
+    }
+
+    .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .header h1 {
+        color: #2c3e50;
+        font-size: 2.5em;
+        margin-bottom: 10px;
+        font-weight: 700;
+    }
+
+    .header p {
+        color: #7f8c8d;
+        font-size: 1.1em;
+        max-width: 800px;
+        margin: 0 auto;
+        line-height: 1.6;
+    }
+
+
+    .diagram-container {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+        margin-bottom: 30px;
+        overflow-x: auto;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .info-panel h3 {
+        color: #2c3e50;
+        margin-bottom: 15px;
+        font-size: 1.4em;
+        border-bottom: 3px solid #667eea;
+        padding-bottom: 8px;
+    }
+
+    .info-panel ul {
+        list-style: none;
+        padding-left: 0;
+    }
+
+    .info-panel li {
+        margin-bottom: 12px;
+        padding: 12px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border-left: 4px solid #667eea;
+    }
+
+    .info-panel li strong {
+        color: #2c3e50;
+    }
+
+    .component-card h4 {
+        margin-bottom: 10px;
+        font-size: 1.2em;
+    }
+
+    .zoom-controls {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 1000;
+    }
+
+    .zoom-btn {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        border: none;
+        background: #667eea;
+        color: white;
+        font-size: 20px;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        transition: all 0.3s ease;
+    }
+
+    .zoom-btn:hover {
+        background: #5a6fd8;
+        transform: scale(1.1);
+    }
+
+    #mermaid-diagram {
+        transition: transform 0.3s ease;
+        transform-origin: center;
+    }
+
+    .flow-legend {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 12px;
+        margin-top: 20px;
+    }
+
+    .flow-legend h4 {
+        margin-bottom: 15px;
+        font-size: 1.3em;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .legend-color {
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        margin-right: 10px;
+    }
+
+    @media (max-width: 768px) {
+        .header h1 {
+            font-size: 2em;
+        }
+
+        .zoom-controls {
+            bottom: 20px;
+            right: 20px;
+        }
+    }
+</style>
 <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>

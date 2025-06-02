@@ -1,6 +1,283 @@
-import React, {useState, useCallback, useMemo} from 'react';
+import React, {useState, useCallback, useMemo, memo, useEffect} from 'react';
 import ReactDOM from 'react-dom/client'
-import {Play, Square, RotateCcw, Monitor, Smartphone} from 'lucide-react';
+import {Play, Square, RotateCcw, Monitor, Smartphone, Workflow, ChartNetwork} from 'lucide-react';
+import mermaid from "mermaid";
+
+
+const SequenceDiagram = memo(() => {
+    let currentZoom = 1;
+    let currentInfo = null;
+
+    // Initialize Mermaid
+    mermaid.initialize({
+        startOnLoad: false,
+        theme: 'default',
+        securityLevel: 'loose',
+        sequence: {
+            diagramMarginX: 50,
+            diagramMarginY: 10,
+            actorMargin: 50,
+            width: 150,
+            height: 65,
+            boxMargin: 10,
+            boxTextMargin: 5,
+            noteMargin: 10,
+            messageMargin: 35
+        }
+    });
+
+    // Mermaid diagram definition
+    const diagramDefinition = useMemo(() =>`
+sequenceDiagram
+    participant App as 📱 Application
+    participant FM as 🔧 Filter Manager
+    participant FC as 🔐 FileCrypt Driver
+    participant StSec as 🛡️ Security Module
+    participant TPM as 🔑 TPM/Registry
+    participant FS as 💾 File System
+
+    Note over FC: 🚀 Driver Initialization
+    FC->>TPM: Initialize master key (StSecpGetMasterKey)
+    TPM-->>FC: Sealed/Unsealed master key
+    FC->>TPM: Load security policies from registry
+    TPM-->>FC: Security descriptors & folder properties
+    FC->>FM: Register filter callbacks
+
+    Note over App,FS: 📄 File Creation Flow
+    App->>FM: CreateFile("\\\\Documents\\\\MyApp\\\\file.txt")
+    FM->>FC: FCPreCreate()
+    
+    FC->>FC: Parse file path & construct full path
+    FC->>StSec: StSecGetSecurityDescriptor(path)
+    StSec->>StSec: Find matching security policy
+    StSec->>StSec: Determine chamber ID (e.g., "MyAppChamber")
+    StSec-->>FC: Security descriptor + chamber info
+    
+    FC->>FC: FCpAccessCheck() with security descriptor
+    alt Access Denied
+        FC->>FC: Modify create disposition if possible
+    end
+    
+    FC->>FS: Forward create request
+    FS-->>FC: File handle created
+    
+    FC->>FC: FCPostCreate()
+    FC->>StSec: StSecpDeriveChamberProfileKey(chamber_id)
+    StSec->>TPM: Get/derive encryption key for chamber
+    TPM-->>StSec: Chamber-specific encryption key
+    StSec-->>FC: Key data
+    FC->>FC: Create stream context with encryption key
+    FC-->>FM: Success
+    FM-->>App: File handle
+
+    Note over App,FS: ✍️ File Write Flow
+    App->>FM: WriteFile(data)
+    FM->>FC: FCPreWrite()
+    
+    FC->>FC: Get stream context (encryption keys)
+    FC->>FC: Get volume context (sector size, etc.)
+    FC->>FC: Allocate shadow buffer for encrypted data
+    FC->>FC: FCpEncEncrypt() - Encrypt data with AES-CBC
+    FC->>FC: Replace original buffer with encrypted buffer
+    FC->>FS: Forward encrypted write
+    FS-->>FC: Write complete
+    
+    FC->>FC: FCPostWrite() - Cleanup buffers
+    FC-->>FM: Success
+    FM-->>App: Write complete
+
+    Note over App,FS: 📖 File Read Flow
+    App->>FM: ReadFile()
+    FM->>FC: FCPreRead()
+    
+    FC->>FC: Get stream context (check if encrypted)
+    alt File is encrypted
+        FC->>FC: Get volume context
+        FC->>FC: Set up completion context
+        FC->>FS: Forward read request
+        FS-->>FC: Encrypted data read
+        
+        FC->>FC: FCPostRead()
+        alt High IRQL or Large Read
+            FC->>FC: Queue FCDecryptWorker() asynchronously
+        else
+            FC->>FC: FCDecryptWorker() immediately
+        end
+        
+        FC->>FC: FCpEncDecrypt() - Decrypt with AES-CBC
+        FC->>FC: Replace encrypted buffer with plaintext
+        FC-->>FM: Decrypted data
+    else
+        FC->>FS: Forward read (no encryption)
+        FS-->>FC: Plaintext data
+        FC-->>FM: Plaintext data
+    end
+    FM-->>App: File data
+
+    Note over App,FS: 💿 Volume Attachment
+    FM->>FC: FCInstanceSetup(new_volume)
+    FC->>FC: Check volume type (NTFS/FAT/etc.)
+    FC->>FC: Check if removable media or desktop/mobile OS
+    alt Volume qualifies for encryption
+        FC->>FC: Create volume context
+        FC->>FC: FCpEncVolumeStart() - Initialize AES provider
+        FC->>FC: Set volume characteristics based on flags
+        FC-->>FM: Attach successful
+    else
+        FC-->>FM: Do not attach
+    end
+
+    Note over FC: 🔐 Key Management
+    FC->>StSec: StSecpGetChamberProfileKey(chamber_id)
+    alt Key in cache
+        StSec-->>FC: Cached key
+    else
+        StSec->>StSec: StSecpDeriveChamberProfileKey()
+        StSec->>TPM: HMAC derive from master key
+        TPM-->>StSec: Derived install & data keys
+        StSec->>StSec: Cache keys
+        StSec-->>FC: New key
+    end`, []);
+
+    // Render the diagram
+    async function renderDiagram() {
+        const element = document.getElementById('mermaid-diagram');
+        element.innerHTML = '';
+        const { svg } = await mermaid.render('sequence-diagram', diagramDefinition);
+        element.innerHTML = svg;
+    }
+
+    // Show info panel
+    function showInfo(type) {
+        // Hide all panels
+        document.querySelectorAll('.info-panel').forEach(panel => {
+            panel.classList.remove('active');
+        });
+
+        // Show selected panel
+        const panel = document.getElementById(`${type}-panel`);
+        if (panel) {
+            panel.classList.add('active');
+            currentInfo = type;
+        }
+    }
+
+    // Highlight specific flows
+    function highlightFlow(flowType) {
+        // Remove previous highlights
+        clearHighlights();
+
+        // Add active class to button
+        document.querySelectorAll('.highlight-btn').forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+
+        // This is a simplified highlighting - in a real implementation,
+        // you'd modify the SVG elements directly
+        console.log(`Highlighting ${flowType} flow`);
+    }
+
+    function clearHighlights() {
+        document.querySelectorAll('.highlight-btn').forEach(btn => btn.classList.remove('active'));
+    }
+
+    // Zoom controls
+    function zoomIn() {
+        currentZoom = Math.min(currentZoom + 0.2, 3);
+        updateZoom();
+    }
+
+    function zoomOut() {
+        currentZoom = Math.max(currentZoom - 0.2, 0.5);
+        updateZoom();
+    }
+
+    function resetZoom() {
+        currentZoom = 1;
+        updateZoom();
+    }
+
+    function updateZoom() {
+        const diagram = document.getElementById('mermaid-diagram');
+        diagram.style.transform = `scale(${currentZoom})`;
+    }
+
+    // Add some interactivity to the diagram
+    document.addEventListener('click', (e) => {
+        if (e.target.closest('#mermaid-diagram')) {
+            // Add click handlers for diagram elements
+            console.log('Diagram element clicked:', e.target);
+        }
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        switch(e.key) {
+            case '1':
+                showInfo('overview');
+                break;
+            case '2':
+                showInfo('components');
+                break;
+            case '3':
+                showInfo('flows');
+                break;
+            case '4':
+                showInfo('security');
+                break;
+            case '+':
+            case '=':
+                zoomIn();
+                break;
+            case '-':
+                zoomOut();
+                break;
+            case '0':
+                resetZoom();
+                break;
+        }
+    });
+
+    useEffect(() => {
+        renderDiagram()
+            .then(() => showInfo('overview'));
+    }, []);
+
+    return (
+        <>
+            <div className="container">
+                <div className="diagram-container">
+                    <div id="mermaid-diagram"></div>
+                </div>
+
+                <div className="flow-legend">
+                    <h4>🎨 Flow Legend</h4>
+                    <div className="legend-item">
+                        <div className="legend-color" style={{background: '#667eea'}}></div>
+                        <span>Synchronous Operations (Direct calls)</span>
+                    </div>
+                    <div className="legend-item">
+                        <div className="legend-color" style={{background: '#f093fb'}}></div>
+                        <span>Asynchronous Operations (Queued work)</span>
+                    </div>
+                    <div className="legend-item">
+                        <div className="legend-color" style={{background: '#84fab0'}}></div>
+                        <span>Security/Policy Operations</span>
+                    </div>
+                    <div className="legend-item">
+                        <div className="legend-color" style={{background: '#ffecd2'}}></div>
+                        <span>Cryptographic Operations</span>
+                    </div>
+                </div>
+            </div>
+
+            <div className="zoom-controls">
+                <button className="zoom-btn" onClick={zoomIn}>+</button>
+                <button className="zoom-btn" onClick={zoomOut}>−</button>
+                <button className="zoom-btn" onClick={resetZoom}>⌂</button>
+            </div>
+        </>
+    );
+});
 
 // Driver function data with call relationships
 const FUNCTIONS_DATA = {
@@ -484,6 +761,7 @@ const ConnectionLine = ({textLength, from, to}) => {
 
 // Main component
 const FileCryptDriverExplorer = () => {
+    const [currentTab, setCurrentTab] = useState(1);
     const [platform, setPlatform] = useState('desktop');
     const [selectedCallback, setSelectedCallback] = useState('File Create/Open');
     const [selectedFunction, setSelectedFunction] = useState(null);
@@ -602,202 +880,237 @@ const FileCryptDriverExplorer = () => {
                 </div>
             </div>
 
+            <div className="flex items-center justify-center bg-gray-100 rounded-lg p-2 space-x-4">
+                <button
+                    onClick={() => setCurrentTab(1)}
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+                        currentTab === 1
+                            ? 'bg-white text-blue-600 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                >
+                    <Workflow size={24}/>
+                    <span className="text-xl">Flow Chart</span>
+                </button>
+                <button
+                    onClick={() => setCurrentTab(2)}
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+                        currentTab === 2
+                            ? 'bg-white text-blue-600 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                >
+                    <ChartNetwork size={24}/>
+                    <span className="text-xl">Sequence Diagram</span>
+                </button>
+            </div>
+
             {/* Controls */}
-            <div className="px-6 py-6 flex flex-col flex-1">
-                <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
-                    <h2 className="text-xl font-semibold mb-4">Driver Controls</h2>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {/* Platform Toggle */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Platform</label>
-                            <div className="flex bg-gray-100 rounded-lg p-1">
-                                <button
-                                    onClick={() => setPlatform('desktop')}
-                                    className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-                                        platform === 'desktop'
-                                            ? 'bg-white text-blue-600 shadow-sm'
-                                            : 'text-gray-600 hover:text-gray-800'
-                                    }`}
-                                >
-                                    <Monitor size={16}/>
-                                    <span>Desktop OS</span>
-                                </button>
-                                <button
-                                    onClick={() => setPlatform('mobile')}
-                                    className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-                                        platform === 'mobile'
-                                            ? 'bg-white text-blue-600 shadow-sm'
-                                            : 'text-gray-600 hover:text-gray-800'
-                                    }`}
-                                >
-                                    <Smartphone size={16}/>
-                                    <span>Mobile OS</span>
-                                </button>
+            {
+                currentTab === 1 && (
+                    <div className="px-6 py-6 flex flex-col flex-1">
+                        <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+                            <h2 className="text-xl font-semibold mb-4">Chart Controls</h2>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* Platform Toggle */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Platform</label>
+                                    <div className="flex bg-gray-100 rounded-lg p-1">
+                                        <button
+                                            onClick={() => setPlatform('desktop')}
+                                            className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+                                                platform === 'desktop'
+                                                    ? 'bg-white text-blue-600 shadow-sm'
+                                                    : 'text-gray-600 hover:text-gray-800'
+                                            }`}
+                                        >
+                                            <Monitor size={16}/>
+                                            <span>Desktop OS</span>
+                                        </button>
+                                        <button
+                                            onClick={() => setPlatform('mobile')}
+                                            className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+                                                platform === 'mobile'
+                                                    ? 'bg-white text-blue-600 shadow-sm'
+                                                    : 'text-gray-600 hover:text-gray-800'
+                                            }`}
+                                        >
+                                            <Smartphone size={16}/>
+                                            <span>Mobile OS</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Operation Selector */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Operation</label>
+                                    <select
+                                        value={selectedCallback}
+                                        onChange={(e) => {
+                                            setSelectedCallback(e.target.value);
+                                            setSelectedFunction(null);
+                                            setCurrentStep(0);
+                                            setIsPlaying(false);
+                                        }}
+                                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        {Object.keys(availableCallbacks).map(callback => (
+                                            <option key={callback} value={callback}>{callback}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Animation Controls */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Animation</label>
+                                    <div className="flex space-x-2">
+                                        <button
+                                            onClick={handlePlay}
+                                            className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                                        >
+                                            {isPlaying ? <Square size={16}/> : <Play size={16}/>}
+                                            <span>{isPlaying ? 'Stop' : 'Start'}</span>
+                                        </button>
+                                        <button
+                                            onClick={handleReset}
+                                            className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                                        >
+                                            <RotateCcw size={16}/>
+                                            <span>Reset</span>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        {/* Operation Selector */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Operation</label>
-                            <select
-                                value={selectedCallback}
-                                onChange={(e) => {
-                                    setSelectedCallback(e.target.value);
-                                    setSelectedFunction(null);
-                                    setCurrentStep(0);
-                                    setIsPlaying(false);
-                                }}
-                                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                {Object.keys(availableCallbacks).map(callback => (
-                                    <option key={callback} value={callback}>{callback}</option>
-                                ))}
-                            </select>
-                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
+                            {/* Flow Diagram */}
+                            <div className="lg:col-span-2 flex flex-col">
+                                <div className="bg-white rounded-lg shadow-sm border flex-1 flex flex-col">
+                                    <div className="border-b p-4">
+                                        <h3 className="text-lg font-semibold">Driver Function Flow Chart</h3>
+                                        <p className="text-sm text-gray-600 mt-1">
+                                            {selectedCallback} - {visibleFunctions.length} functions
+                                        </p>
+                                    </div>
 
-                        {/* Animation Controls */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Animation</label>
-                            <div className="flex space-x-2">
-                                <button
-                                    onClick={handlePlay}
-                                    className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-                                >
-                                    {isPlaying ? <Square size={16}/> : <Play size={16}/>}
-                                    <span>{isPlaying ? 'Stop' : 'Start'}</span>
-                                </button>
-                                <button
-                                    onClick={handleReset}
-                                    className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-                                >
-                                    <RotateCcw size={16}/>
-                                    <span>Reset</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                                    <div className="relative h-96 overflow-auto p-4 flex-1">
+                                        {visibleFunctions.map(({func}, index) => {
+                                            const position = calculatePositions[func.name];
+                                            if (!position) return null;
 
-                {/**/}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
-                    {/* Flow Diagram */}
-                    <div className="lg:col-span-2 flex flex-col">
-                        <div className="bg-white rounded-lg shadow-sm border flex-1 flex flex-col">
-                            <div className="border-b p-4">
-                                <h3 className="text-lg font-semibold">Driver Architecture & Flow</h3>
-                                <p className="text-sm text-gray-600 mt-1">
-                                    {selectedCallback} - {visibleFunctions.length} functions
-                                </p>
-                            </div>
+                                            const isDimmed = isPlaying && index > currentStep;
 
-                            <div className="relative h-96 overflow-auto p-4 flex-1">
-                                {visibleFunctions.map(({func}, index) => {
-                                    const position = calculatePositions[func.name];
-                                    if (!position) return null;
+                                            return (
+                                                <FunctionNode
+                                                    key={func.name}
+                                                    func={func}
+                                                    isSelected={selectedFunction?.name === func.name}
+                                                    onClick={setSelectedFunction}
+                                                    position={position}
+                                                    isDimmed={isDimmed}
+                                                />
+                                            );
+                                        })}
 
-                                    const isDimmed = isPlaying && index > currentStep;
+                                        {/* Draw connection lines */}
+                                        {visibleFunctions.map(({func}) => {
+                                            const fromPos = calculatePositions[func.name];
+                                            if (!fromPos) return null;
 
-                                    return (
-                                        <FunctionNode
-                                            key={func.name}
-                                            func={func}
-                                            isSelected={selectedFunction?.name === func.name}
-                                            onClick={setSelectedFunction}
-                                            position={position}
-                                            isDimmed={isDimmed}
-                                        />
-                                    );
-                                })}
+                                            return func.calls?.map(calledFuncName => {
+                                                const toPos = calculatePositions[calledFuncName];
+                                                if (!toPos || (platform === 'desktop' && FUNCTIONS_DATA[calledFuncName]?.mobileOnly)) return null;
 
-                                {/* Draw connection lines */}
-                                {visibleFunctions.map(({func}) => {
-                                    const fromPos = calculatePositions[func.name];
-                                    if (!fromPos) return null;
-
-                                    return func.calls?.map(calledFuncName => {
-                                        const toPos = calculatePositions[calledFuncName];
-                                        if (!toPos || (platform === 'desktop' && FUNCTIONS_DATA[calledFuncName]?.mobileOnly)) return null;
-
-                                        return (
-                                            <ConnectionLine
-                                                key={`${func.name}-${calledFuncName}`}
-                                                textLength={func.name.length}
-                                                from={fromPos}
-                                                to={toPos}
-                                            />
-                                        );
-                                    });
-                                })}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Function Details */}
-                    <div>
-                        <div className="bg-white rounded-lg shadow-sm border">
-                            <div className="border-b p-4">
-                                <h3 className="text-lg font-semibold">Function Details</h3>
+                                                return (
+                                                    <ConnectionLine
+                                                        key={`${func.name}-${calledFuncName}`}
+                                                        textLength={func.name.length}
+                                                        from={fromPos}
+                                                        to={toPos}
+                                                    />
+                                                );
+                                            });
+                                        })}
+                                    </div>
+                                </div>
                             </div>
 
-                            <div className="p-4">
-                                {selectedFunction ? (
-                                    <div className="space-y-4">
-                                        <div>
-                                            <h4 className="font-semibold text-lg text-blue-600">{selectedFunction.name}</h4>
-                                            <span
-                                                className={`inline-block px-2 py-1 rounded text-xs font-medium mt-1 ${
-                                                    selectedFunction.category === 'fc' ? 'bg-blue-100 text-blue-800' :
-                                                        selectedFunction.category === 'stsec' ? 'bg-green-100 text-green-800' :
-                                                            'bg-purple-100 text-purple-800'
-                                                }`}
-                                            >
+                            {/* Function Details */}
+                            <div>
+                                <div className="bg-white rounded-lg shadow-sm border">
+                                    <div className="border-b p-4">
+                                        <h3 className="text-lg font-semibold">Function Details</h3>
+                                    </div>
+
+                                    <div className="p-4">
+                                        {selectedFunction ? (
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <h4 className="font-semibold text-lg text-blue-600">{selectedFunction.name}</h4>
+                                                    <span
+                                                        className={`inline-block px-2 py-1 rounded text-xs font-medium mt-1 ${
+                                                            selectedFunction.category === 'fc' ? 'bg-blue-100 text-blue-800' :
+                                                                selectedFunction.category === 'stsec' ? 'bg-green-100 text-green-800' :
+                                                                    'bg-purple-100 text-purple-800'
+                                                        }`}
+                                                    >
                                                 {selectedFunction.category.toUpperCase()}
                                             </span>
-                                            {selectedFunction.mobileOnly && (
-                                                <span
-                                                    className="inline-block ml-2 px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs font-medium">
+                                                    {selectedFunction.mobileOnly && (
+                                                        <span
+                                                            className="inline-block ml-2 px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs font-medium">
                                                     📱 Mobile Only
                                                 </span>
-                                            )}
-                                        </div>
+                                                    )}
+                                                </div>
 
-                                        <div>
-                                            <h5 className="font-medium text-gray-900 mb-2">Description</h5>
-                                            <p className="text-gray-700 text-sm">{selectedFunction.description}</p>
-                                        </div>
+                                                <div>
+                                                    <h5 className="font-medium text-gray-900 mb-2">Description</h5>
+                                                    <p className="text-gray-700 text-sm">{selectedFunction.description}</p>
+                                                </div>
 
-                                        <div>
-                                            <h5 className="font-medium text-gray-900 mb-2">Implementation Details</h5>
-                                            <p className="text-gray-600 text-sm">{selectedFunction.details}</p>
-                                        </div>
+                                                <div>
+                                                    <h5 className="font-medium text-gray-900 mb-2">Implementation
+                                                        Details</h5>
+                                                    <p className="text-gray-600 text-sm">{selectedFunction.details}</p>
+                                                </div>
 
-                                        {selectedFunction.calls && selectedFunction.calls.length > 0 && (
-                                            <div>
-                                                <h5 className="font-medium text-gray-900 mb-2">Calls
-                                                    ({selectedFunction.calls.length})</h5>
-                                                <ul className="text-sm space-y-1">
-                                                    {selectedFunction.calls.map(calledFunc => (
-                                                        <li key={calledFunc}
-                                                            className="text-blue-600 hover:text-blue-800 cursor-pointer"
-                                                            onClick={() => setSelectedFunction(FUNCTIONS_DATA[calledFunc])}>
-                                                            → {calledFunc}
-                                                        </li>
-                                                    ))}
-                                                </ul>
+                                                {selectedFunction.calls && selectedFunction.calls.length > 0 && (
+                                                    <div>
+                                                        <h5 className="font-medium text-gray-900 mb-2">Calls
+                                                            ({selectedFunction.calls.length})</h5>
+                                                        <ul className="text-sm space-y-1">
+                                                            {selectedFunction.calls.map(calledFunc => (
+                                                                <li key={calledFunc}
+                                                                    className="text-blue-600 hover:text-blue-800 cursor-pointer"
+                                                                    onClick={() => setSelectedFunction(FUNCTIONS_DATA[calledFunc])}>
+                                                                    → {calledFunc}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="text-center text-gray-500 py-8">
+                                                <p>Click on a function in the diagram to view details</p>
                                             </div>
                                         )}
                                     </div>
-                                ) : (
-                                    <div className="text-center text-gray-500 py-8">
-                                        <p>Click on a function in the diagram to view details</p>
-                                    </div>
-                                )}
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
+                )
+            }
+            {
+                currentTab === 2 && (
+                    <SequenceDiagram/>
+                )
+            }
         </div>
     );
 };

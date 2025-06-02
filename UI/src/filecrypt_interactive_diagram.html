@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FileCrypt Driver - Interactive Sequence Diagram</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            color: #7f8c8d;
+            font-size: 1.1em;
+            max-width: 800px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+
+        .diagram-container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+            overflow-x: auto;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .info-panel h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 8px;
+        }
+
+        .info-panel ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .info-panel li {
+            margin-bottom: 12px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .info-panel li strong {
+            color: #2c3e50;
+        }
+
+        .component-card h4 {
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .zoom-controls {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 1000;
+        }
+
+        .zoom-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: none;
+            background: #667eea;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .zoom-btn:hover {
+            background: #5a6fd8;
+            transform: scale(1.1);
+        }
+
+        #mermaid-diagram {
+            transition: transform 0.3s ease;
+            transform-origin: center;
+        }
+
+        .flow-legend {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 20px;
+        }
+
+        .flow-legend h4 {
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .zoom-controls {
+                bottom: 20px;
+                right: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="diagram-container">
+            <div id="mermaid-diagram"></div>
+        </div>
+
+        <div class="flow-legend">
+            <h4>🎨 Flow Legend</h4>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #667eea;"></div>
+                <span>Synchronous Operations (Direct calls)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #f093fb;"></div>
+                <span>Asynchronous Operations (Queued work)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #84fab0;"></div>
+                <span>Security/Policy Operations</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ffecd2;"></div>
+                <span>Cryptographic Operations</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="zoom-controls">
+        <button class="zoom-btn" onclick="zoomIn()">+</button>
+        <button class="zoom-btn" onclick="zoomOut()">−</button>
+        <button class="zoom-btn" onclick="resetZoom()">⌂</button>
+    </div>
+
+    <script>
+        let currentZoom = 1;
+        let currentInfo = null;
+
+        // Initialize Mermaid
+        mermaid.initialize({ 
+            startOnLoad: false,
+            theme: 'default',
+            securityLevel: 'loose',
+            sequence: {
+                diagramMarginX: 50,
+                diagramMarginY: 10,
+                actorMargin: 50,
+                width: 150,
+                height: 65,
+                boxMargin: 10,
+                boxTextMargin: 5,
+                noteMargin: 10,
+                messageMargin: 35
+            }
+        });
+
+        // Mermaid diagram definition
+        const diagramDefinition = `
+sequenceDiagram
+    participant App as 📱 Application
+    participant FM as 🔧 Filter Manager
+    participant FC as 🔐 FileCrypt Driver
+    participant StSec as 🛡️ Security Module
+    participant TPM as 🔑 TPM/Registry
+    participant FS as 💾 File System
+
+    Note over FC: 🚀 Driver Initialization
+    FC->>TPM: Initialize master key (StSecpGetMasterKey)
+    TPM-->>FC: Sealed/Unsealed master key
+    FC->>TPM: Load security policies from registry
+    TPM-->>FC: Security descriptors & folder properties
+    FC->>FM: Register filter callbacks
+
+    Note over App,FS: 📄 File Creation Flow
+    App->>FM: CreateFile("\\\\Documents\\\\MyApp\\\\file.txt")
+    FM->>FC: FCPreCreate()
+    
+    FC->>FC: Parse file path & construct full path
+    FC->>StSec: StSecGetSecurityDescriptor(path)
+    StSec->>StSec: Find matching security policy
+    StSec->>StSec: Determine chamber ID (e.g., "MyAppChamber")
+    StSec-->>FC: Security descriptor + chamber info
+    
+    FC->>FC: FCpAccessCheck() with security descriptor
+    alt Access Denied
+        FC->>FC: Modify create disposition if possible
+    end
+    
+    FC->>FS: Forward create request
+    FS-->>FC: File handle created
+    
+    FC->>FC: FCPostCreate()
+    FC->>StSec: StSecpDeriveChamberProfileKey(chamber_id)
+    StSec->>TPM: Get/derive encryption key for chamber
+    TPM-->>StSec: Chamber-specific encryption key
+    StSec-->>FC: Key data
+    FC->>FC: Create stream context with encryption key
+    FC-->>FM: Success
+    FM-->>App: File handle
+
+    Note over App,FS: ✍️ File Write Flow
+    App->>FM: WriteFile(data)
+    FM->>FC: FCPreWrite()
+    
+    FC->>FC: Get stream context (encryption keys)
+    FC->>FC: Get volume context (sector size, etc.)
+    FC->>FC: Allocate shadow buffer for encrypted data
+    FC->>FC: FCpEncEncrypt() - Encrypt data with AES-CBC
+    FC->>FC: Replace original buffer with encrypted buffer
+    FC->>FS: Forward encrypted write
+    FS-->>FC: Write complete
+    
+    FC->>FC: FCPostWrite() - Cleanup buffers
+    FC-->>FM: Success
+    FM-->>App: Write complete
+
+    Note over App,FS: 📖 File Read Flow
+    App->>FM: ReadFile()
+    FM->>FC: FCPreRead()
+    
+    FC->>FC: Get stream context (check if encrypted)
+    alt File is encrypted
+        FC->>FC: Get volume context
+        FC->>FC: Set up completion context
+        FC->>FS: Forward read request
+        FS-->>FC: Encrypted data read
+        
+        FC->>FC: FCPostRead()
+        alt High IRQL or Large Read
+            FC->>FC: Queue FCDecryptWorker() asynchronously
+        else
+            FC->>FC: FCDecryptWorker() immediately
+        end
+        
+        FC->>FC: FCpEncDecrypt() - Decrypt with AES-CBC
+        FC->>FC: Replace encrypted buffer with plaintext
+        FC-->>FM: Decrypted data
+    else
+        FC->>FS: Forward read (no encryption)
+        FS-->>FC: Plaintext data
+        FC-->>FM: Plaintext data
+    end
+    FM-->>App: File data
+
+    Note over App,FS: 💿 Volume Attachment
+    FM->>FC: FCInstanceSetup(new_volume)
+    FC->>FC: Check volume type (NTFS/FAT/etc.)
+    FC->>FC: Check if removable media or desktop/mobile OS
+    alt Volume qualifies for encryption
+        FC->>FC: Create volume context
+        FC->>FC: FCpEncVolumeStart() - Initialize AES provider
+        FC->>FC: Set volume characteristics based on flags
+        FC-->>FM: Attach successful
+    else
+        FC-->>FM: Do not attach
+    end
+
+    Note over FC: 🔐 Key Management
+    FC->>StSec: StSecpGetChamberProfileKey(chamber_id)
+    alt Key in cache
+        StSec-->>FC: Cached key
+    else
+        StSec->>StSec: StSecpDeriveChamberProfileKey()
+        StSec->>TPM: HMAC derive from master key
+        TPM-->>StSec: Derived install & data keys
+        StSec->>StSec: Cache keys
+        StSec-->>FC: New key
+    end`;
+
+        // Render the diagram
+        async function renderDiagram() {
+            const element = document.getElementById('mermaid-diagram');
+            element.innerHTML = '';
+            const { svg } = await mermaid.render('sequence-diagram', diagramDefinition);
+            element.innerHTML = svg;
+        }
+
+        // Show info panel
+        function showInfo(type) {
+            // Hide all panels
+            document.querySelectorAll('.info-panel').forEach(panel => {
+                panel.classList.remove('active');
+            });
+            
+            // Show selected panel
+            const panel = document.getElementById(`${type}-panel`);
+            if (panel) {
+                panel.classList.add('active');
+                currentInfo = type;
+            }
+        }
+
+        // Highlight specific flows
+        function highlightFlow(flowType) {
+            // Remove previous highlights
+            clearHighlights();
+            
+            // Add active class to button
+            document.querySelectorAll('.highlight-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // This is a simplified highlighting - in a real implementation,
+            // you'd modify the SVG elements directly
+            console.log(`Highlighting ${flowType} flow`);
+        }
+
+        function clearHighlights() {
+            document.querySelectorAll('.highlight-btn').forEach(btn => btn.classList.remove('active'));
+        }
+
+        // Zoom controls
+        function zoomIn() {
+            currentZoom = Math.min(currentZoom + 0.2, 3);
+            updateZoom();
+        }
+
+        function zoomOut() {
+            currentZoom = Math.max(currentZoom - 0.2, 0.5);
+            updateZoom();
+        }
+
+        function resetZoom() {
+            currentZoom = 1;
+            updateZoom();
+        }
+
+        function updateZoom() {
+            const diagram = document.getElementById('mermaid-diagram');
+            diagram.style.transform = `scale(${currentZoom})`;
+        }
+
+        // Initialize the page
+        window.addEventListener('load', async () => {
+            await renderDiagram();
+            showInfo('overview');
+        });
+
+        // Add some interactivity to the diagram
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('#mermaid-diagram')) {
+                // Add click handlers for diagram elements
+                console.log('Diagram element clicked:', e.target);
+            }
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case '1':
+                    showInfo('overview');
+                    break;
+                case '2':
+                    showInfo('components');
+                    break;
+                case '3':
+                    showInfo('flows');
+                    break;
+                case '4':
+                    showInfo('security');
+                    break;
+                case '+':
+                case '=':
+                    zoomIn();
+                    break;
+                case '-':
+                    zoomOut();
+                    break;
+                case '0':
+                    resetZoom();
+                    break;
+            }
+        });
+    </script>
+</body>
+</html>
