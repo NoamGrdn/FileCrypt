@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, {useState, useCallback, useMemo} from 'react';
 import ReactDOM from 'react-dom/client'
-import { Play, Square, RotateCcw, Monitor, Smartphone } from 'lucide-react';
+import {Play, Square, RotateCcw, Monitor, Smartphone} from 'lucide-react';
 
 // Driver function data with call relationships
 const FUNCTIONS_DATA = {
@@ -10,14 +10,22 @@ const FUNCTIONS_DATA = {
         category: 'fc',
         description: 'Pre-operation callback for file/directory creation. Determines encryption policy and performs security checks.',
         calls: ['FCpObtainSecurityInfoCallout', 'FCpAccessCheck', 'StSecGetSecurityDescriptor'],
-        details: 'Main entry point for file creation operations. Constructs full file path, determines chamber assignment, and validates access permissions.'
+        details: 'Main entry point for file creation operations. Constructs full file path, determines chamber assignment, and validates access permissions.',
+        pos: {
+            x: 50,
+            y: 80
+        }
     },
     FCPostCreate: {
         name: 'FCPostCreate',
         category: 'fc',
         description: 'Post-operation callback for file/directory creation. Sets up encryption infrastructure.',
         calls: ['FCpEncStreamStart'],
-        details: 'Establishes stream context for encryption, initializes BCrypt key handles, and registers the stream with filter manager.'
+        details: 'Establishes stream context for encryption, initializes BCrypt key handles, and registers the stream with filter manager.',
+        pos: {
+            x: 50,
+            y: 550
+        }
     },
     FCPreRead: {
         name: 'FCPreRead',
@@ -25,7 +33,11 @@ const FUNCTIONS_DATA = {
         description: 'Pre-operation callback for read operations. Prepares decryption context.',
         calls: [],
         details: 'Validates stream context exists, sets up completion context for post-operation decryption.',
-        mobileOnly: true
+        mobileOnly: true,
+        pos: {
+            x: 50,
+            y: 40
+        }
     },
     FCPostRead: {
         name: 'FCPostRead',
@@ -33,7 +45,11 @@ const FUNCTIONS_DATA = {
         description: 'Post-operation callback for read operations. Performs decryption of data.',
         calls: ['FCDecryptWorker'],
         details: 'Manages decryption workflow, handles both synchronous and asynchronous decryption based on IRQL and data size.',
-        mobileOnly: true
+        mobileOnly: true,
+        pos: {
+            x: 50,
+            y: 160
+        }
     },
     FCPreWrite: {
         name: 'FCPreWrite',
@@ -58,21 +74,33 @@ const FUNCTIONS_DATA = {
         category: 'fc',
         description: 'Determines encryption chamber and security descriptor for a file path.',
         calls: ['StSecGetSecurityDescriptor'],
-        details: 'Core security policy resolution function. Maps file paths to encryption chambers and security descriptors.'
+        details: 'Core security policy resolution function. Maps file paths to encryption chambers and security descriptors.',
+        pos: {
+            x: 400,
+            y: 40
+        }
     },
     FCpAccessCheck: {
         name: 'FCpAccessCheck',
         category: 'fc',
         description: 'Performs access control checks using security descriptors.',
         calls: [],
-        details: 'Validates user permissions against security descriptors, handles access modifications for encrypted files.'
+        details: 'Validates user permissions against security descriptors, handles access modifications for encrypted files.',
+        pos: {
+            x: 400,
+            y: 150
+        }
     },
     FCpEncStreamStart: {
         name: 'FCpEncStreamStart',
         category: 'fc',
         description: 'Initializes encryption context for a file stream.',
         calls: ['StSecpGetChamberProfileKey', 'StSecpDeriveChamberProfileKey'],
-        details: 'Sets up BCrypt key handles, retrieves or derives chamber-specific encryption keys.'
+        details: 'Sets up BCrypt key handles, retrieves or derives chamber-specific encryption keys.',
+        pos: {
+            x: 400,
+            y: 550
+        }
     },
     FCpEncEncrypt: {
         name: 'FCpEncEncrypt',
@@ -86,14 +114,22 @@ const FUNCTIONS_DATA = {
         category: 'fc',
         description: 'Decrypts data read from disk using AES-CBC.',
         calls: [],
-        details: 'Performs sector-aligned AES-CBC decryption on read data, handles zeroing offsets for security.'
+        details: 'Performs sector-aligned AES-CBC decryption on read data, handles zeroing offsets for security.',
+        pos: {
+            x: 550,
+            y: 170
+        }
     },
     FCDecryptWorker: {
         name: 'FCDecryptWorker',
         category: 'fc',
         description: 'Worker function for asynchronous decryption operations.',
         calls: ['FCpEncDecrypt'],
-        details: 'Handles both immediate and queued decryption, manages MDL mapping and buffer access.'
+        details: 'Handles both immediate and queued decryption, manages MDL mapping and buffer access.',
+        pos: {
+            x: 300,
+            y: 170
+        }
     },
     FCFreeShadowBuffer: {
         name: 'FCFreeShadowBuffer',
@@ -109,140 +145,220 @@ const FUNCTIONS_DATA = {
         category: 'stsec',
         description: 'Main security policy lookup function. Returns security descriptor and chamber info.',
         calls: ['StSecpGetStorageFolderStringSecurityDescriptor', 'StSecpFindFolderPropertyPolicyElement'],
-        details: 'Culmination of path-based security model. Resolves security descriptors and encryption chambers from policy cache.'
+        details: 'Culmination of path-based security model. Resolves security descriptors and encryption chambers from policy cache.',
+        pos: {
+            x: 700,
+            y: 100
+        }
     },
     StSecpGetStorageFolderStringSecurityDescriptor: {
         name: 'StSecpGetStorageFolderStringSecurityDescriptor',
         category: 'stsec',
         description: 'Retrieves and processes security descriptor strings for folder paths.',
         calls: ['StSecpFindSecurityDescriptorPolicyElement', 'StSecpGetParameterValue', 'StSecpCheckConditionalPolicy'],
-        details: 'Finds matching security policies, processes parameters in templates, constructs final security descriptor strings.'
+        details: 'Finds matching security policies, processes parameters in templates, constructs final security descriptor strings.',
+        pos: {
+            x: 980,
+            y: 40
+        }
     },
     StSecpFindSecurityDescriptorPolicyElement: {
         name: 'StSecpFindSecurityDescriptorPolicyElement',
         category: 'stsec',
         description: 'Searches security descriptor cache for matching path patterns.',
         calls: [],
-        details: 'Performs path pattern matching including parameterized segments like <PackageFamilyName>.'
+        details: 'Performs path pattern matching including parameterized segments like <PackageFamilyName>.',
+        pos: {
+            x: 1400,
+            y: 40
+        }
     },
     StSecpFindFolderPropertyPolicyElement: {
         name: 'StSecpFindFolderPropertyPolicyElement',
         category: 'stsec',
         description: 'Searches folder property cache for encryption chamber assignments.',
         calls: [],
-        details: 'Simple path matching to determine chamber assignments for specific folders.'
+        details: 'Simple path matching to determine chamber assignments for specific folders.',
+        pos: {
+            x: 980,
+            y: 150
+        }
     },
     StSecpGetChamberProfileKey: {
         name: 'StSecpGetChamberProfileKey',
         category: 'stsec',
         description: 'Retrieves cached encryption keys for a chamber.',
         calls: [],
-        details: 'Looks up chamber-specific encryption keys from memory cache, updates access timestamps.'
+        details: 'Looks up chamber-specific encryption keys from memory cache, updates access timestamps.',
+        pos: {
+            x: 700,
+            y: 500
+        }
     },
     StSecpDeriveChamberProfileKey: {
         name: 'StSecpDeriveChamberProfileKey',
         category: 'stsec',
         description: 'Derives new encryption keys for chambers using HMAC-based key derivation.',
         calls: ['StSecpGetMasterKey', 'StSecpAddChamberProfileKey'],
-        details: 'Creates Install and Data keys from master key using HMAC-SHA256, adds to cache.'
+        details: 'Creates Install and Data keys from master key using HMAC-SHA256, adds to cache.',
+        pos: {
+            x: 700,
+            y: 600
+        }
     },
     StSecpGetMasterKey: {
         name: 'StSecpGetMasterKey',
         category: 'stsec',
         description: 'Retrieves or generates the master encryption key.',
         calls: ['StSecpReadSealedKeyBlob', 'StSecpUnsealKey', 'StSecpSealKey', 'StSecpWriteSealedKeyBlob'],
-        details: 'Manages TPM-sealed master key lifecycle: generation, sealing, unsealing, and persistence.'
+        details: 'Manages TPM-sealed master key lifecycle: generation, sealing, unsealing, and persistence.',
+        pos: {
+            x: 1100,
+            y: 530
+        }
     },
     StSecpAddChamberProfileKey: {
         name: 'StSecpAddChamberProfileKey',
         category: 'stsec',
         description: 'Adds derived encryption keys to the memory cache.',
         calls: [],
-        details: 'Stores chamber keys in generic table cache, manages cache size and cleanup triggers.'
+        details: 'Stores chamber keys in generic table cache, manages cache size and cleanup triggers.',
+        pos: {
+            x: 1100,
+            y: 630
+        }
     },
     StSecpGetParameterValue: {
         name: 'StSecpGetParameterValue',
         category: 'stsec',
         description: 'Converts parameter types to Security Identifiers (SIDs).',
         calls: ['StSecpGetSidFromUserName', 'StSecpGetSidFromPackageFamilyName', 'KappxGetSecurityDescriptorStringForPackageFullName', 'StSecpGetSidFromPackageFullName', 'StSecpGetSidFromProductId'],
-        details: 'Handles different identifier types: usernames, package names, product IDs, converting them to SIDs.'
+        details: 'Handles different identifier types: usernames, package names, product IDs, converting them to SIDs.',
+        pos: {
+            x: 1400,
+            y: 120
+        }
     },
     StSecpGetSidFromPackageFamilyName: {
         name: 'StSecpGetSidFromPackageFamilyName',
         category: 'stsec',
         description: 'Generates SID from Windows Store app package family name.',
         calls: ['KappxGetPackageSidFromPackageFamilyNameInRegistry', 'StSecpGetAppSid'],
-        details: 'Tries registry lookup first, falls back to algorithmic SID generation using cryptographic hashing.'
+        details: 'Tries registry lookup first, falls back to algorithmic SID generation using cryptographic hashing.',
+        pos: {
+            x: 1900,
+            y: 140
+        }
     },
     StSecpGetSidFromPackageFullName: {
         name: 'StSecpGetSidFromPackageFullName',
         category: 'stsec',
         description: 'Extracts family name from full package name and generates SID.',
         calls: ['StSecpPackageFamilyNameFromFullName', 'StSecpGetSidFromPackageFamilyName'],
-        details: 'Parses full package name format to extract family name component.'
+        details: 'Parses full package name format to extract family name component.',
+        pos: {
+            x: 1850,
+            y: 290
+        }
     },
     StSecpGetSidFromProductId: {
         name: 'StSecpGetSidFromProductId',
         category: 'stsec',
         description: 'Generates SID from product ID.',
         calls: ['StSecpGetAppSid'],
-        details: 'Converts product IDs to uppercase and generates deterministic SIDs.'
+        details: 'Converts product IDs to uppercase and generates deterministic SIDs.',
+        pos: {
+            x: 1850,
+            y: 360
+        }
     },
     StSecpGetSidFromUserName: {
         name: 'StSecpGetSidFromUserName',
         category: 'stsec',
         description: 'Copies username as SID (simplified implementation).',
         calls: [],
-        details: 'Simple username copying rather than true SID conversion.'
+        details: 'Simple username copying rather than true SID conversion.',
+        pos: {
+            x: 1850,
+            y: 80
+        }
     },
     StSecpGetAppSid: {
         name: 'StSecpGetAppSid',
         category: 'stsec',
         description: 'Generates deterministic SID using cryptographic hashing.',
         calls: [],
-        details: 'Uses SHA-256 hash to create consistent SIDs with custom authority (S-1-15-2-...).'
+        details: 'Uses SHA-256 hash to create consistent SIDs with custom authority (S-1-15-2-...).',
+        pos: {
+            x: 2350,
+            y: 120
+        }
     },
     StSecpPackageFamilyNameFromFullName: {
         name: 'StSecpPackageFamilyNameFromFullName',
         category: 'stsec',
         description: 'Extracts package family name from full package name.',
         calls: [],
-        details: 'Parses Windows Store package naming format, extracts PublisherName.AppName_PublisherID.'
+        details: 'Parses Windows Store package naming format, extracts PublisherName.AppName_PublisherID.',
+        pos: {
+            x: 2350,
+            y: 290
+        }
     },
     StSecpCheckConditionalPolicy: {
         name: 'StSecpCheckConditionalPolicy',
         category: 'stsec',
         description: 'Checks if package is in debug profile registry.',
         calls: [],
-        details: 'Determines debug mode status by checking registry key existence.'
+        details: 'Determines debug mode status by checking registry key existence.',
+        pos: {
+            x: 1400,
+            y: 200
+        }
     },
     StSecpSealKey: {
         name: 'StSecpSealKey',
         category: 'stsec',
         description: 'Seals encryption key using TPM for secure storage.',
         calls: [],
-        details: 'Uses TPM to create sealed key blob that can only be unsealed by the same TPM.'
+        details: 'Uses TPM to create sealed key blob that can only be unsealed by the same TPM.',
+        pos: {
+            x: 1500,
+            y: 590
+        }
     },
     StSecpUnsealKey: {
         name: 'StSecpUnsealKey',
         category: 'stsec',
         description: 'Unseals TPM-protected encryption key.',
         calls: [],
-        details: 'Decrypts sealed key blob using TPM, restoring original master key.'
+        details: 'Decrypts sealed key blob using TPM, restoring original master key.',
+        pos: {
+            x: 1500,
+            y: 520
+        }
     },
     StSecpReadSealedKeyBlob: {
         name: 'StSecpReadSealedKeyBlob',
         category: 'stsec',
         description: 'Reads sealed key blob from registry storage.',
         calls: [],
-        details: 'Retrieves encrypted master key from registry at fixed storage location.'
+        details: 'Retrieves encrypted master key from registry at fixed storage location.',
+        pos: {
+            x: 1500,
+            y: 450
+        }
     },
     StSecpWriteSealedKeyBlob: {
         name: 'StSecpWriteSealedKeyBlob',
         category: 'stsec',
         description: 'Writes sealed key blob to registry storage.',
         calls: [],
-        details: 'Persists encrypted master key to registry for future use.'
+        details: 'Persists encrypted master key to registry for future use.',
+        pos: {
+            x: 1500,
+            y: 660
+        }
     },
 
     // Kappx Windows App Package functions
@@ -251,21 +367,33 @@ const FUNCTIONS_DATA = {
         category: 'kappx',
         description: 'Obtains security descriptor for Windows Store app package.',
         calls: ['KappxGetPackageRootPathForPackageFullName'],
-        details: 'Retrieves security descriptor from package directory or provides default SDDL string.'
+        details: 'Retrieves security descriptor from package directory or provides default SDDL string.',
+        pos: {
+            x: 1850,
+            y: 210
+        }
     },
     KappxGetPackageRootPathForPackageFullName: {
         name: 'KappxGetPackageRootPathForPackageFullName',
         category: 'kappx',
         description: 'Locates filesystem path where Windows Store app is installed.',
         calls: [],
-        details: 'Constructs full path to package installation directory using registry PackageRoot value.'
+        details: 'Constructs full path to package installation directory using registry PackageRoot value.',
+        pos: {
+            x: 2350,
+            y: 210
+        }
     },
     KappxGetPackageSidFromPackageFamilyNameInRegistry: {
         name: 'KappxGetPackageSidFromPackageFamilyNameInRegistry',
         category: 'kappx',
         description: 'Extracts app SID from registry using package family name.',
         calls: [],
-        details: 'Queries PackageSidRef registry key to retrieve stored SID for Windows Store app.'
+        details: 'Queries PackageSidRef registry key to retrieve stored SID for Windows Store app.',
+        pos: {
+            x: 2350,
+            y: 50
+        }
     }
 };
 
@@ -282,13 +410,17 @@ const CALLBACK_FLOWS = {
 };
 
 // Component for rendering function nodes
-const FunctionNode = ({ func, isSelected, onClick, position, isDimmed }) => {
+const FunctionNode = ({func, isSelected, onClick, position, isDimmed}) => {
     const getCategoryColor = (category) => {
         switch (category) {
-            case 'fc': return 'bg-blue-100 border-blue-300 text-blue-800';
-            case 'stsec': return 'bg-green-100 border-green-300 text-green-800';
-            case 'kappx': return 'bg-purple-100 border-purple-300 text-purple-800';
-            default: return 'bg-gray-100 border-gray-300 text-gray-800';
+            case 'fc':
+                return 'bg-blue-100 border-blue-300 text-blue-800';
+            case 'stsec':
+                return 'bg-green-100 border-green-300 text-green-800';
+            case 'kappx':
+                return 'bg-purple-100 border-purple-300 text-purple-800';
+            default:
+                return 'bg-gray-100 border-gray-300 text-gray-800';
         }
     };
 
@@ -301,7 +433,7 @@ const FunctionNode = ({ func, isSelected, onClick, position, isDimmed }) => {
         ${isDimmed ? 'opacity-40' : 'opacity-100'}
         border-2 rounded-lg px-3 py-2 min-w-[140px] text-center font-medium text-sm 
       `}
-            style={{ left: position.x, top: position.y }}
+            style={{left: position.x, top: position.y}}
             onClick={() => onClick(func)}
         >
             {func.name}
@@ -313,7 +445,7 @@ const FunctionNode = ({ func, isSelected, onClick, position, isDimmed }) => {
 };
 
 // Component for rendering connection lines
-const ConnectionLine = ({ textLength, from, to }) => {
+const ConnectionLine = ({textLength, from, to}) => {
     const dx = to.x - from.x;
     const dy = to.y - from.y;
     const midX = from.x + dx / 2;
@@ -325,7 +457,7 @@ const ConnectionLine = ({ textLength, from, to }) => {
     return (
         <svg
             className="absolute top-0 left-0 pointer-events-none"
-            style={{ width: '100%', height: '100%' }}
+            style={{width: '100%', height: '100%'}}
         >
             <defs>
                 <marker
@@ -336,7 +468,7 @@ const ConnectionLine = ({ textLength, from, to }) => {
                     refY="3.5"
                     orient="auto"
                 >
-                    <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280" />
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/>
                 </marker>
             </defs>
             <path
@@ -380,7 +512,7 @@ const FileCryptDriverExplorer = () => {
             funcNames.forEach(funcName => {
                 if (!visited.has(funcName) && FUNCTIONS_DATA[funcName]) {
                     visited.add(funcName);
-                    flow.push({ func: FUNCTIONS_DATA[funcName], depth });
+                    flow.push({func: FUNCTIONS_DATA[funcName], depth});
 
                     // Add called functions
                     const calledFunctions = FUNCTIONS_DATA[funcName].calls || [];
@@ -403,12 +535,12 @@ const FileCryptDriverExplorer = () => {
         let currentY = 50;
         const depthX = {};
 
-        currentFlow.forEach(({ func, depth }) => {
+        currentFlow.forEach(({func, depth}) => {
             if (!depthX[depth]) {
                 depthX[depth] = 0;
             }
 
-            positions[func.name] = {
+            positions[func.name] = func.pos ?? {
                 x: (depth * 380) + 50,
                 y: currentY + depthX[depth] * 100
             };
@@ -418,27 +550,6 @@ const FileCryptDriverExplorer = () => {
 
         return positions;
     }, [currentFlow]);
-
-    // Calculate positions for flow diagram - horizontally
-    // const calculatePositions = useMemo(() => {
-    //     const positions = {};
-    //     const depthY = {};
-    //
-    //     currentFlow.forEach(({ func, depth }) => {
-    //         if (!depthY[depth]) {
-    //             depthY[depth] = 0;
-    //         }
-    //
-    //         positions[func.name] = {
-    //             x: 50 + depthY[depth] * 220, // Spread functions at same depth horizontally
-    //             y: depth * 120 + 50 // Stack depths vertically
-    //         };
-    //
-    //         depthY[depth]++;
-    //     });
-    //
-    //     return positions;
-    // }, [currentFlow]);
 
     // Animation logic
     const handlePlay = () => {
@@ -469,7 +580,7 @@ const FileCryptDriverExplorer = () => {
     };
 
     // Filter functions based on mobile compatibility
-    const visibleFunctions = currentFlow.filter(({ func }) => {
+    const visibleFunctions = currentFlow.filter(({func}) => {
         if (platform === 'desktop' && func.mobileOnly) {
             return false;
         }
@@ -509,7 +620,7 @@ const FileCryptDriverExplorer = () => {
                                             : 'text-gray-600 hover:text-gray-800'
                                     }`}
                                 >
-                                    <Monitor size={16} />
+                                    <Monitor size={16}/>
                                     <span>Desktop OS</span>
                                 </button>
                                 <button
@@ -520,7 +631,7 @@ const FileCryptDriverExplorer = () => {
                                             : 'text-gray-600 hover:text-gray-800'
                                     }`}
                                 >
-                                    <Smartphone size={16} />
+                                    <Smartphone size={16}/>
                                     <span>Mobile OS</span>
                                 </button>
                             </div>
@@ -553,14 +664,14 @@ const FileCryptDriverExplorer = () => {
                                     onClick={handlePlay}
                                     className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
                                 >
-                                    {isPlaying ? <Square size={16} /> : <Play size={16} />}
+                                    {isPlaying ? <Square size={16}/> : <Play size={16}/>}
                                     <span>{isPlaying ? 'Stop' : 'Start'}</span>
                                 </button>
                                 <button
                                     onClick={handleReset}
                                     className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
                                 >
-                                    <RotateCcw size={16} />
+                                    <RotateCcw size={16}/>
                                     <span>Reset</span>
                                 </button>
                             </div>
@@ -568,6 +679,7 @@ const FileCryptDriverExplorer = () => {
                     </div>
                 </div>
 
+                {/**/}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
                     {/* Flow Diagram */}
                     <div className="lg:col-span-2 flex flex-col">
@@ -580,7 +692,7 @@ const FileCryptDriverExplorer = () => {
                             </div>
 
                             <div className="relative h-96 overflow-auto p-4 flex-1">
-                                {visibleFunctions.map(({ func }, index) => {
+                                {visibleFunctions.map(({func}, index) => {
                                     const position = calculatePositions[func.name];
                                     if (!position) return null;
 
@@ -599,7 +711,7 @@ const FileCryptDriverExplorer = () => {
                                 })}
 
                                 {/* Draw connection lines */}
-                                {visibleFunctions.map(({ func }) => {
+                                {visibleFunctions.map(({func}) => {
                                     const fromPos = calculatePositions[func.name];
                                     if (!fromPos) return null;
 
@@ -633,17 +745,20 @@ const FileCryptDriverExplorer = () => {
                                     <div className="space-y-4">
                                         <div>
                                             <h4 className="font-semibold text-lg text-blue-600">{selectedFunction.name}</h4>
-                                            <span className={`inline-block px-2 py-1 rounded text-xs font-medium mt-1 ${
-                                                selectedFunction.category === 'fc' ? 'bg-blue-100 text-blue-800' :
-                                                    selectedFunction.category === 'stsec' ? 'bg-green-100 text-green-800' :
-                                                        'bg-purple-100 text-purple-800'
-                                            }`}>
-                        {selectedFunction.category.toUpperCase()}
-                      </span>
+                                            <span
+                                                className={`inline-block px-2 py-1 rounded text-xs font-medium mt-1 ${
+                                                    selectedFunction.category === 'fc' ? 'bg-blue-100 text-blue-800' :
+                                                        selectedFunction.category === 'stsec' ? 'bg-green-100 text-green-800' :
+                                                            'bg-purple-100 text-purple-800'
+                                                }`}
+                                            >
+                                                {selectedFunction.category.toUpperCase()}
+                                            </span>
                                             {selectedFunction.mobileOnly && (
-                                                <span className="inline-block ml-2 px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs font-medium">
-                          📱 Mobile Only
-                        </span>
+                                                <span
+                                                    className="inline-block ml-2 px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs font-medium">
+                                                    📱 Mobile Only
+                                                </span>
                                             )}
                                         </div>
 
@@ -659,10 +774,12 @@ const FileCryptDriverExplorer = () => {
 
                                         {selectedFunction.calls && selectedFunction.calls.length > 0 && (
                                             <div>
-                                                <h5 className="font-medium text-gray-900 mb-2">Calls ({selectedFunction.calls.length})</h5>
+                                                <h5 className="font-medium text-gray-900 mb-2">Calls
+                                                    ({selectedFunction.calls.length})</h5>
                                                 <ul className="text-sm space-y-1">
                                                     {selectedFunction.calls.map(calledFunc => (
-                                                        <li key={calledFunc} className="text-blue-600 hover:text-blue-800 cursor-pointer"
+                                                        <li key={calledFunc}
+                                                            className="text-blue-600 hover:text-blue-800 cursor-pointer"
                                                             onClick={() => setSelectedFunction(FUNCTIONS_DATA[calledFunc])}>
                                                             → {calledFunc}
                                                         </li>
