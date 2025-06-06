@@ -4,26 +4,25 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "private": true,
-  "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "preview": "vite preview"
   },
+  "private": true,
   "dependencies": {
+    "@tailwindcss/vite": "^4.1.8",
+    "@vitejs/plugin-react": "4.5.0",
     "lucide-react": "0.511.0",
+    "mermaid": "10.6.1",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-router-dom": "6.4.3",
-    "mermaid": "10.6.1"
+    "tailwindcss": "^4.1.8",
+    "vite": "6.3.5"
   },
   "devDependencies": {
     "@types/react": "18.0.24",
     "@types/react-dom": "18.0.8",
-    "@types/stylis": "4.0.2",
-    "@vitejs/plugin-react": "2.2.0",
-    "vite": "3.2.4"
+    "@types/stylis": "4.0.2"
   }
 }

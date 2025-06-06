@@ -2656,7 +2656,7 @@ DriverEntry(
 
     osVersionStatus = RtlGetVersion(&lpVersionInfo);
 
-    /* Check if OS is Windows 7 or later (Win7 => 6.1, Win8 => 6.2, Win8.1 => 6.3, Win10 => 10) */
+    /* Check if OS is later than Windows 7 (Win7 => 6.1, Win8 => 6.2, Win8.1 => 6.3, Win10 => 10) */
     if (-1 < osVersionStatus &&
         (
             6 < lpVersionInfo.dwMajorVersion || // Later than Windows 7

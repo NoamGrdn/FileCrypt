@@ -1,8 +1,7 @@
 import React, {useState, useCallback, useMemo, memo, useEffect} from 'react';
 import ReactDOM from 'react-dom/client'
 import {Play, Square, RotateCcw, Monitor, Smartphone, Workflow, ChartNetwork} from 'lucide-react';
-import mermaid from "mermaid";
-
+import mermaid from 'mermaid';
 
 const SequenceDiagram = memo(() => {
     let currentZoom = 1;
