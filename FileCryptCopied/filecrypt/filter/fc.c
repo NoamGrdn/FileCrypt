@@ -244,16 +244,15 @@ FCInstanceSetup(
     NTSTATUS status;
     NTSTATUS getDosNameStatus;
     NTSTATUS encryptVolumeStartStatus;
-    PVOID nullPtr = NULL;
-    PFLT_VOLUME_PROPERTIES fltObjectVolProps = NULL;
+    PFLT_VOLUME_PROPERTIES volumeProperties = NULL;
     PFILE_FS_VOLUME_INFORMATION fsVolumeInfo = NULL;
     PDEVICE_OBJECT highestDeviceObject;
     PDEVICE_OBJECT LowerDeviceObject;
     NTSTATUS return_status = STATUS_FLT_DO_NOT_ATTACH;
     USHORT fileSystemDeviceNameLength;
-    bool isNotRemovableMedia;
-    bool isVolumeSdCard = false;
-    ULONG fltObjectVolPropsLength = 0;
+    BOOLEAN doesVolumeNotSupportRemovableMedia;
+    BOOLEAN isVolumeSdCard = FALSE;
+    ULONG volumePropertiesLength = 0;
     PCUSTOM_FC_VOLUME_CONTEXT volumeContext = NULL;
     PDEVICE_OBJECT diskDeviceObject = NULL;
     PCUNICODE_STRING fileSystemDeviceName;
@@ -261,38 +260,38 @@ FCInstanceSetup(
     PVPB vqb;
     PDEVICE_OBJECT vqb_deviceObject;
 
+    /* Only attach to file systems */
+    if (VolumeDeviceType != FILE_DEVICE_DISK_FILE_SYSTEM)
+    {
+        goto FCInstanceSetup_cleanup_and_return;
+    }
+
+    /* Only attach to the following filesystems: RAW, NTFS, FAT, and EXFAT */
+    if (1 < VolumeFilesystemType + ~FLT_FSTYPE_RAW && VolumeFilesystemType != FLT_FSTYPE_EXFAT)
+    {
+        goto FCInstanceSetup_cleanup_and_return;
+    }
+    
+    volumeProperties = ExAllocatePool2(0x100, 0x248, POOL_TAG_FCvp);
+
+    if (volumeProperties == NULL)
+    {
+        goto FCInstanceSetup_cleanup_and_return;
+    }
+
     status = FltGetVolumeProperties(
         FltObjects->Volume,
-        fltObjectVolProps,
+        volumeProperties,
         0x248,
-        &fltObjectVolPropsLength
+        &volumePropertiesLength
     );
 
     if (status < 0)
     {
         goto FCInstanceSetup_cleanup_and_return;
     }
-
-    fltObjectVolProps = ExAllocatePool2(0x100, 0x248, POOL_TAG_FCvp);
-
-    if (fltObjectVolProps == NULL)
-    {
-        goto FCInstanceSetup_cleanup_and_return;
-    }
-
-    /* Only attach to file systems,
-     * Only attach to standard filesystems (RAW, NTFS, FAT and EXFAT) */
-    if (
-        VolumeDeviceType != FILE_DEVICE_DISK_FILE_SYSTEM ||
-        1 < VolumeFilesystemType + ~FLT_FSTYPE_RAW && VolumeFilesystemType != FLT_FSTYPE_EXFAT
-    )
-    {
-        goto FCInstanceSetup_cleanup_and_return;
-    }
-
-    /* fltKernel.h: DeviceCharacteristics bit 1 => FILE_REMOVABLE_MEDIA */
-    isNotRemovableMedia = (fltObjectVolProps->DeviceCharacteristics & 1) == 0;
-    fsVolumeInfo = (PFILE_FS_VOLUME_INFORMATION)nullPtr;
+    
+    doesVolumeNotSupportRemovableMedia = (volumeProperties->DeviceCharacteristics & FILE_REMOVABLE_MEDIA) == 0;
 
     /* If FilterEmulatedExternalDrive is ON check if volume is an sd card */
     if ((gFCFlags & FilterEmulatedExternalDriveFlagBit) != 0)
@@ -317,9 +316,9 @@ FCInstanceSetup(
             goto FCInstanceSetup_cleanup_and_return;
         }
 
-        /* Check if the VolumeLabelLength is 6,
-         * if it is than compare VolumeLabel with the string "SDCARD" */
-        if ((fsVolumeInfo->VolumeLabelLength & 0xfffffffe) == 0xc)
+        /* Check if the VolumeLabelLength is 6 wchars in length (12/13 byte longs).
+         * If it is, than compare the VolumeLabel with the string "SDCARD" */
+        if ((fsVolumeInfo->VolumeLabelLength & 0xfffffffe) == 12)
         {
             compResult = _wcsnicmp(
                 fsVolumeInfo->VolumeLabel,
@@ -335,18 +334,21 @@ FCInstanceSetup(
     if (isMobileOS == FALSE)
     {
         status = FCpRetrieveAppPairingId(FltObjects);
+        
         if (status < 0)
         {
         joined_r0x0001c0011463:
-            /* On mobile: only attach to removable media (SD cards) */
+            /* On a non-mobile OS, if the app pairing id is not found, only continue if the volume is an SDCARD */
             if (!isVolumeSdCard)
             {
                 goto FCInstanceSetup_cleanup_and_return;
             }
         }
     }
-    else if (isNotRemovableMedia)
+    else if (doesVolumeNotSupportRemovableMedia)
     {
+        /* On mobile and the device does not support removable media =>
+         * check if it is itself one, particularly, if it is an SDCARD */
         goto joined_r0x0001c0011463;
     }
 
@@ -369,9 +371,9 @@ FCInstanceSetup(
         volumeContext->BcryptAlgHandle.ObjectLength = 0;
         volumeContext->EncryptionEnabled = 0;
 
-        if (0x200 < fltObjectVolProps->SectorSize)
+        if (0x200 < volumeProperties->SectorSize)
         {
-            volumeSectorSize = fltObjectVolProps->SectorSize;
+            volumeSectorSize = volumeProperties->SectorSize;
         }
 
         volumeContext->SectorSize = volumeSectorSize;
@@ -383,11 +385,11 @@ FCInstanceSetup(
             getDosNameStatus = RtlVolumeDeviceToDosName(diskDeviceObject, &volumeContext->DeviceName);
             if (getDosNameStatus < 0)
             {
-                fileSystemDeviceName = &fltObjectVolProps->RealDeviceName;
+                fileSystemDeviceName = &volumeProperties->RealDeviceName;
                 fileSystemDeviceNameLength = ((UNICODE_STRING*)fileSystemDeviceName)->Length;
                 if (fileSystemDeviceNameLength == 0)
                 {
-                    fileSystemDeviceName = (PCUNICODE_STRING)&fltObjectVolProps->FileSystemDeviceName;
+                    fileSystemDeviceName = (PCUNICODE_STRING)&volumeProperties->FileSystemDeviceName;
                     fileSystemDeviceNameLength = ((UNICODE_STRING*)fileSystemDeviceName)->Length;
 
                     if (fileSystemDeviceNameLength == 0)
@@ -451,7 +453,7 @@ FCInstanceSetup(
                     vqb_deviceObject = vqb->DeviceObject;
                     vqb_deviceObject->Flags = vqb_deviceObject->Flags | DO_SUPPORTS_PERSISTENT_ACLS;
                 }
-                if (((gFCFlags & FilterEmulatedExternalDriveFlagBit) != 0) && (isNotRemovableMedia))
+                if ((gFCFlags & FilterEmulatedExternalDriveFlagBit) != 0 && doesVolumeNotSupportRemovableMedia)
                 {
                     highestDeviceObject = IoGetAttachedDeviceReference(diskDeviceObject);
 
@@ -459,8 +461,8 @@ FCInstanceSetup(
                     {
                         /* Apply the FILE_REMOVABLE_MEDIA characteristic to all devices in the stack
                            (fltKernel.h: _FLT_VOLUME_PROPERTIES DeviceCharacteristics) */
-                        highestDeviceObject->Characteristics = highestDeviceObject->Characteristics |
-                            FILE_REMOVABLE_MEDIA;
+                        highestDeviceObject->Characteristics =
+                            highestDeviceObject->Characteristics |FILE_REMOVABLE_MEDIA;
                         LowerDeviceObject = IoGetLowerDeviceObject(highestDeviceObject);
                         ObfDereferenceObject(highestDeviceObject);
                         highestDeviceObject = LowerDeviceObject;
@@ -479,9 +481,9 @@ FCInstanceSetup(
         }
     }
 FCInstanceSetup_cleanup_and_return:
-    if (fltObjectVolProps != NULL)
+    if (volumeProperties != NULL)
     {
-        ExFreePoolWithTag(fltObjectVolProps, POOL_TAG_FCvp);
+        ExFreePoolWithTag(volumeProperties, POOL_TAG_FCvp);
     }
     if (fsVolumeInfo != NULL)
     {
@@ -658,13 +660,13 @@ FCpEncDecrypt(
             cypherTextSize = BcryptAlgData->EncryptionSectorSize;
             chunkSize = (ulonglong)cypherTextSize;
             uVar1 = uVar1 + cypherTextSize;
-            
+
             if (ZeroingOffest < uVar1)
             {
                 memset(PbOutput + ZeroingOffest, 0, uVar1 - ZeroingOffest);
                 break;
             }
-            
+
             Parameters = (PVOID)((longlong)Parameters + chunkSize);
             PbOutput = PbOutput + chunkSize;
             PbInput = PbInput + chunkSize;
@@ -1437,7 +1439,7 @@ FCPreCreate(
     PVOID* CompletionContext
 )
 {
-    bool bVar1;
+    BOOLEAN fileNameEndsWithBackslash;
     BOOLEAN isMobile;
     BOOLEAN result;
     NTSTATUS kernelStackStatus;
@@ -1452,7 +1454,6 @@ FCPreCreate(
     FLT_PREOP_CALLBACK_STATUS return_status = FLT_PREOP_SUCCESS_WITH_CALLBACK;
     PCUSTOM_FC_CREATE_CONTEXT lookasideListEntry = NULL;
     ACCESS_MASK accessMask = 0;
-    BOOLEAN needsBackslash;
     ushort totalPathLength;
     PWCHAR chamberIdStr = NULL;
     UNICODE_STRING chamberPath = {0, 0, NULL};
@@ -1467,7 +1468,7 @@ FCPreCreate(
     PWCHAR fileName = NULL;
     ushort fileNameLength;
     PFILE_OBJECT fileObject;
-    bool isChamberPathSet = false;
+    BOOLEAN isChamberPathSet = FALSE;
     PFLT_FILE_NAME_INFORMATION pFileNameInformation;
 
 
@@ -1564,8 +1565,7 @@ FCPreCreate(
                 }
 
                 currentPathPosition = NULL;
-                bVar1 = true;
-                needsBackslash = '\x01';
+                fileNameEndsWithBackslash = TRUE;
                 fileNameLength = (fileNameInfo->FinalComponent).Length;
                 totalPathLength = fileNameLength + 2 + (fileNameInfo->ParentDir).Length;
 
@@ -1573,8 +1573,7 @@ FCPreCreate(
                     ((fileNameInfo->FinalComponent).Buffer[(ulonglong)(fileNameLength >> 1) - 1] != L'\\'))
                 {
                     totalPathLength = totalPathLength + 2;
-                    bVar1 = false;
-                    needsBackslash = '\0';
+                    fileNameEndsWithBackslash = FALSE;
                 }
 
                 fileNameLength = totalPathLength;
@@ -1621,8 +1620,10 @@ FCPreCreate(
                         (pFileNameInformation->FinalComponent).Buffer,
                         pFileNameInformation->FinalComponent.Length
                     );
+
                     currentPathPosition = fileName + ((pFileNameInformation->FinalComponent).Length >> 1);
-                    if (!bVar1)
+
+                    if (!fileNameEndsWithBackslash)
                     {
                         *currentPathPosition = L'\\';
                         currentPathPosition = currentPathPosition + 1;
@@ -1630,7 +1631,7 @@ FCPreCreate(
 
                     chamberData.Status = STATUS_SUCCESS;
                     *currentPathPosition = L'\0';
-                    isChamberPathSet = true;
+                    isChamberPathSet = TRUE;
 
                     // chamberPath = (UNICODE_STRING)CONCAT142(chamberPath._2_14_, fileNameLength - 2);
                     // chamberData._16_16_ = ZEXT816(0);
@@ -1873,11 +1874,11 @@ FCPreCreate(
                         *CompletionContext = lookasideListEntry;
                         goto FCPreCreate_cleanup;
                     }
-                    isChamberPathSet = true;
+                    isChamberPathSet = TRUE;
                     if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
                     {
                         errorEventDescriptor = &ObtainSdAndChamberIdFailure;
-                        isChamberPathSet = true;
+                        isChamberPathSet = TRUE;
 
                         goto FCPreCreate_log_before_return;
                     }
@@ -2058,12 +2059,13 @@ FCPreRead_cleanup_and_return:
 
 /* This function checks for the existence of a special marker file on a volume to determine if the
  * volume has been "paired" with a Windows application */
+// todo this always returns STATUS_SUCCESS and in this case, makes no sense in FCInstanceSetup
 NTSTATUS
 FCpRetrieveAppPairingId(
     PCFLT_RELATED_OBJECTS FltObjects
 )
 {
-    NTSTATUS return_status;
+    NTSTATUS return_status = STATUS_SUCCESS;
     NTSTATUS strAppendStatus;
     NTSTATUS status;
     ULONG volumeNameLength = 0;

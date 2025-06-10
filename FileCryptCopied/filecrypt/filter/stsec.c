@@ -458,7 +458,7 @@ StSecpAddChamberProfileKey(
     ULONG64 currentSystemTime;
     PWCHAR oldestCacheEntryChamberId;
 
-    strCountStatus = RtlStringCbLengthW(ChamberId, InstallSecretKey, (size_t*) & chamberIdStringLength);
+    strCountStatus = RtlStringCbLengthW(ChamberId, InstallSecretKey, (size_t*)&chamberIdStringLength);
 
     if (strCountStatus < 0)
     {
@@ -755,8 +755,12 @@ StSecpCacheInitialize(
             rtlQueryRegistryValuesExRoutine = RtlQueryRegistryValues;
         }
 
-        /* Read configuration from the registry under the key HKLM\SYSTEM\StSec */
-        return_status = rtlQueryRegistryValuesExRoutine(2, (short *)L"StSec", &queryRegTable);
+        /* 	Read from \Registry\Machine\System\CurrentControlSet\Control\StSec */
+        return_status = rtlQueryRegistryValuesExRoutine(
+            RTL_REGISTRY_CONTROL,
+            (short*)L"StSec",
+            &queryRegTable
+        );
 
         if (((return_status + 0x80000000U & 0x80000000) != 0) || (filter = g_FilterObject, return_status == -
             0x3fffffcc))
@@ -987,7 +991,7 @@ StSecpDeriveChamberProfileKey(
         }
 
         pbChamberIdInput = ChamberId;
-        return_status = RtlStringCbLengthW(ChamberId, phMasterKeyHash, (size_t*) & chamberIdLength);
+        return_status = RtlStringCbLengthW(ChamberId, phMasterKeyHash, (size_t*)&chamberIdLength);
 
         if (return_status < 0)
         {
@@ -2855,7 +2859,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
     }
     if (isDebugProfile != '\0')
     {
-        return_status = RtlStringCbLengthW(policyElement->DebugValue, firstName, (size_t*) & parameterLength);
+        return_status = RtlStringCbLengthW(policyElement->DebugValue, firstName, (size_t*)&parameterLength);
 
         if (return_status < 0)
         {

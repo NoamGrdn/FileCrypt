@@ -64,15 +64,15 @@ typedef struct _CUSTOM_FC_BCRYPT_DATA
 /* Volume-wide settings - 56 bytes in size */
 typedef struct _CUSTOM_FC_VOLUME_CONTEXT
 {
-    /* Initialized by RtlVolumeDeviceToDosName at FCInstanceSetup */
+    /* Volume device name, initialized by RtlVolumeDeviceToDosName at FCInstanceSetup */
     UNICODE_STRING DeviceName;
-    /* Disk sector size used for encryption alignment */
+    /* Disk sector size used for encryption alignment  (default 0x200/512 bytes) */
     ULONG SectorSize;
     /* Encryption settings for the volume */
     CUSTOM_FC_BCRYPT_DATA BcryptAlgHandle;
-    /* Flag indicating if encryption is enabled */
+    /* Flag indicating if encryption is enabled on a volume */
     BOOLEAN EncryptionEnabled;
-    /* Does volume need verification */
+    /* Flag indicating whether a volume requires security verification */
     BOOLEAN VerificationNeeded;
 } CUSTOM_FC_VOLUME_CONTEXT, *PCUSTOM_FC_VOLUME_CONTEXT;
 
@@ -81,9 +81,9 @@ typedef struct _CUSTOM_FC_BCRYPT_KEY_DATA
 {
     /* Symmetric key, generated using a ChamberId */
     BCRYPT_KEY_HANDLE BcryptKeyHandle;
-    /* Bugger that holds the key */
+    /* Bugger that holds the key object */
     PUCHAR KeyObject;
-    /* Size of the key */
+    /* Size of the key object buffer*/
     ULONG KeyObjectSize;
 } CUSTOM_FC_BCRYPT_KEY_DATA, *PCUSTOM_FC_BCRYPT_KEY_DATA;
 
@@ -92,9 +92,9 @@ typedef struct _CUSTOM_FC_STREAM_CONTEXT
 {
     /* File-specific encryption key data */
     CUSTOM_FC_BCRYPT_KEY_DATA KeyData;
-    /* Chamber identifier for this file, see FCPostCreate */
+    /* Chamber identifier for this file (determines encryption policy) */
     PWCHAR ChamberId;
-    /* (1=Install or 2=Data) see StSecpDeriveChamberProfileKey */
+    /* used for key derivation (1 = Install or 2 = Data) */
     ULONG ChamberType;
 } CUSTOM_FC_STREAM_CONTEXT, *PCUSTOM_FC_STREAM_CONTEXT;
 
@@ -105,42 +105,53 @@ typedef struct _CUSTOM_FC_CREATE_CONTEXT
     PWCHAR ChamberId;
     /* Calculated ChamerType */
     ULONG ChamberType;
-    /* Is access to the file has been modified */
+    /* Flag indicating if file access was modified during the pre-operation */
     BOOLEAN IsAccessModified;
 } CUSTOM_FC_CREATE_CONTEXT, *PCUSTOM_FC_CREATE_CONTEXT;
 
 /* 16 bytes in size */
 typedef struct _CUSTOM_FC_READ_CONTEXT
 {
+    /* Volume encryption settings */
     PCUSTOM_FC_VOLUME_CONTEXT VolumeContext;
+    /* File-specific encryption context */
     PCUSTOM_FC_STREAM_CONTEXT StreamContext;
 } CUSTOM_FC_READ_CONTEXT, *PCUSTOM_FC_READ_CONTEXT;
 
 /* Used in FCPostRead as parameters for the FCDecryptWorker function - 16 bytes in size */
 typedef struct _CUSTOM_FC_DECRYPT_PARAMS
 {
+    /* Filter manager callback data */
     PFLT_CALLBACK_DATA CallbackData;
+    /* Read completion context */
     PCUSTOM_FC_READ_CONTEXT CompletionContext;
 } CUSTOM_FC_DECRYPT_PARAMS, *PCUSTOM_FC_DECRYPT_PARAMS;
 
 /* Information passed from FCPreWrite to FCPostWrite - 25 bytes in size*/
 typedef struct _CUSTOM_FC_WRITE_CONTEXT
 {
+    /* Volume encryption context */
     PCUSTOM_FC_VOLUME_CONTEXT VolumeContext;
+    /* File encryption context */
     PCUSTOM_FC_STREAM_CONTEXT StreamContext;
-    /* The data that is being written to the disk after encryption */
+    /* The data that is being written to the disk after being encrypted */
     PUCHAR Ciphertext;
-    /* Where Ciphertext was allocated: "x01" => NPagedLookasideList, "x02" => PoolWithTag */
+    /* Memory allocation type - where Ciphertext was allocated: (0x01 = NPagedLookasideList, 0x02 = PoolWithTag) */
     UCHAR AllocationType;
 } CUSTOM_FC_WRITE_CONTEXT, *PCUSTOM_FC_WRITE_CONTEXT;
 
-/* Cache of derived profile keys - 36 bytes in size*/
+/* Cache of derived profile keys. Used to avoid expensive re-derivation - 36 bytes in size*/
 typedef struct _CUSTOM_FC_STSEC_CACHE_TABLE_ENTRY
 {
+    /* Timestamp for cache expiration management */
     ULONG64 LastAccessTime;
+    /* Chamber Id - used as the cache key */
     PWCHAR ChamberId;
+    /* Derived install key (ChamberType = 1) */
     PUCHAR InstallKey;
+    /* Derived data key (ChamberType = 2) */
     PUCHAR DataKey;
+    /* Uniform size of both keys */
     ULONG KeySize;
 } CUSTOM_FC_STSEC_CACHE_TABLE_ENTRY, *PCUSTOM_FC_STSEC_CACHE_TABLE_ENTRY;
 
@@ -148,7 +159,7 @@ typedef struct _CUSTOM_FC_STSEC_CACHE_TABLE_ENTRY
  * ChamberId and Type of the current file/directory that is being opened  - 36 bytes in size*/
 typedef struct CUSTOM_FC_CHAMBER_DATA
 {
-    /* The path to check */
+    /* Path to check for chamber assignment */
     PUNICODE_STRING InputPath;
     /* Calculated security descriptor of the path */
     PSECURITY_DESCRIPTOR SecurityDescriptor;
@@ -160,23 +171,29 @@ typedef struct CUSTOM_FC_CHAMBER_DATA
     NTSTATUS Status;
 } CUSTOM_FC_CHAMBER_DATA, *PCUSTOM_FC_CHAMBER_DATA;
 
-/* Initialized on startup. Populates the StSecSecurityDescriptorCacheList global variable
- * from registry values - 48 bytes in size*/
+/* Cache entry for security descriptor policies loaded from registry - 48 bytes in size */
 typedef struct _CUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY
 {
+    /* Next entry in linked list */
     struct _CUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY* Next;
+    /* Previous entry in linked list */
     struct _CUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY* Prev;
+    /* egistry path pattern (may contain parameters like <PackageFamilyName>) */
     UNICODE_STRING Path;
+    /* SDDL security descriptor string */
     PWCHAR SecurityDescriptor;
+    /* Debug-specific security descriptor addition */
     PWCHAR DebugValue;
 } CUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY, *PCUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY;
 
-/* Initialized on startup. Populates the StSecFolderPropertyCacheList global variable
- * from registry values */
+/* Cache entry for folder properties that determine chamber assignments */
 typedef struct _CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY
 {
+    /* Next entry in linked list */
     struct _CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY* Next;
+    /* Previous entry in linked list */
     struct _CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY* Prev;
+    /* Folder path pattern */
     UNICODE_STRING Path;
     /* Chamber Type */
     ULONG FolderId;
