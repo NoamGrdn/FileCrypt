@@ -290,7 +290,9 @@ FCInstanceSetup(
     {
         goto FCInstanceSetup_cleanup_and_return;
     }
-    
+
+    /* "removable" means that the media of the device is removable.
+     * For example, CD-ROM drives or card readers for flash media */
     doesVolumeNotSupportRemovableMedia = (volumeProperties->DeviceCharacteristics & FILE_REMOVABLE_MEDIA) == 0;
 
     /* If FilterEmulatedExternalDrive is ON check if volume is an sd card */
@@ -333,8 +335,8 @@ FCInstanceSetup(
     isMobileOS = FsRtlIsMobileOS();
     if (isMobileOS == FALSE)
     {
+        /* On non-mobile, if the file system does not contain a pairing id, and it's not an SDCARD, return */
         status = FCpRetrieveAppPairingId(FltObjects);
-        
         if (status < 0)
         {
         joined_r0x0001c0011463:
@@ -347,8 +349,7 @@ FCInstanceSetup(
     }
     else if (doesVolumeNotSupportRemovableMedia)
     {
-        /* On mobile and the device does not support removable media =>
-         * check if it is itself one, particularly, if it is an SDCARD */
+        /* On mobile, attach to everything but SDCARDs */
         goto joined_r0x0001c0011463;
     }
 
@@ -2065,7 +2066,6 @@ FCpRetrieveAppPairingId(
     PCFLT_RELATED_OBJECTS FltObjects
 )
 {
-    NTSTATUS return_status = STATUS_SUCCESS;
     NTSTATUS strAppendStatus;
     NTSTATUS status;
     ULONG volumeNameLength = 0;
@@ -2164,7 +2164,7 @@ FCpRetrieveAppPairingId(
         FltClose(fileHandle);
     }
 
-    return return_status;
+    return status;
 }
 
 FLT_PREOP_CALLBACK_STATUS
