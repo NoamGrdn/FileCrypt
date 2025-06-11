@@ -335,7 +335,7 @@ FCInstanceSetup(
     isMobileOS = FsRtlIsMobileOS();
     if (isMobileOS == FALSE)
     {
-        /* On non-mobile, if the file system does not contain a pairing id, and it's not an SDCARD, return */
+        /* On non-mobile, if the file system has an app pairing id, or it's an sd card - continue the attachment process */
         status = FCpRetrieveAppPairingId(FltObjects);
         if (status < 0)
         {
@@ -349,7 +349,7 @@ FCInstanceSetup(
     }
     else if (doesVolumeNotSupportRemovableMedia)
     {
-        /* On mobile, attach to everything but SDCARDs */
+        /* On mobile continue attachment process only on sd cards */
         goto joined_r0x0001c0011463;
     }
 
