@@ -247,7 +247,7 @@ FCInstanceSetup(
     PFLT_VOLUME_PROPERTIES volumeProperties = NULL;
     PFILE_FS_VOLUME_INFORMATION fsVolumeInfo = NULL;
     PDEVICE_OBJECT highestDeviceObject;
-    PDEVICE_OBJECT LowerDeviceObject;
+    PDEVICE_OBJECT lowerDeviceObject;
     NTSTATUS return_status = STATUS_FLT_DO_NOT_ATTACH;
     USHORT fileSystemDeviceNameLength;
     BOOLEAN doesVolumeNotSupportRemovableMedia;
@@ -442,7 +442,10 @@ FCInstanceSetup(
                 vqb = diskDeviceObject->Vpb;
                 isMobileOS = FsRtlIsMobileOS();
                 /* Checks if we are not on mobile and the device can persist ACLS */
-                if ((isMobileOS == FALSE) && ((vqb->DeviceObject->Flags & DO_SUPPORTS_PERSISTENT_ACLS) != 0))
+                if (
+                    isMobileOS == FALSE &&
+                    (vqb->DeviceObject->Flags & DO_SUPPORTS_PERSISTENT_ACLS) != 0
+                )
                 {
                     volumeContext->VerificationNeeded = FALSE;
                 }
@@ -453,29 +456,31 @@ FCInstanceSetup(
                     vqb_deviceObject = vqb->DeviceObject;
                     vqb_deviceObject->Flags = vqb_deviceObject->Flags | DO_SUPPORTS_PERSISTENT_ACLS;
                 }
-                if ((gFCFlags & FilterEmulatedExternalDriveFlagBit) != 0 && doesVolumeNotSupportRemovableMedia)
+
+                if (
+                    (gFCFlags & FilterEmulatedExternalDriveFlagBit) != 0 &&
+                    doesVolumeNotSupportRemovableMedia
+                )
                 {
                     highestDeviceObject = IoGetAttachedDeviceReference(diskDeviceObject);
 
                     while (highestDeviceObject != NULL)
                     {
-                        /* Apply the FILE_REMOVABLE_MEDIA characteristic to all devices in the stack
-                           (fltKernel.h: _FLT_VOLUME_PROPERTIES DeviceCharacteristics) */
+                        /* Apply the FILE_REMOVABLE_MEDIA characteristic to all devices in the stack */
                         highestDeviceObject->Characteristics =
                             highestDeviceObject->Characteristics | FILE_REMOVABLE_MEDIA;
-                        LowerDeviceObject = IoGetLowerDeviceObject(highestDeviceObject);
+                        lowerDeviceObject = IoGetLowerDeviceObject(highestDeviceObject);
                         ObfDereferenceObject(highestDeviceObject);
-                        highestDeviceObject = LowerDeviceObject;
+                        highestDeviceObject = lowerDeviceObject;
                     }
                 }
 
                 return_status = STATUS_SUCCESS;
 
-                /* if BypassAccessChecks is ON remove the FILE_DEVICE_SECURE_OPEN characteristic
-                   (fltKernel.h: _FLT_VOLUME_PROPERTIES DeviceCharacteristics) */
+                /* if BypassAccessChecks is ON remove the FILE_DEVICE_SECURE_OPEN characteristic */
                 if ((gFCFlags & BypassAccessChecksFlagBit) != 0)
                 {
-                    diskDeviceObject->Characteristics = diskDeviceObject->Characteristics & 0xfffffeff;
+                    diskDeviceObject->Characteristics = diskDeviceObject->Characteristics & ~FILE_DEVICE_SECURE_OPEN;
                 }
             }
         }
