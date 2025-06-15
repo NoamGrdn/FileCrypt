@@ -1965,11 +1965,11 @@ FCPreRead(
 
     status = FltGetStreamContext(FltObjects->Instance, FltObjects->FileObject, streamContext);
 
-    /* The condition checks if either the FltGetStreamContext has failed, the files was opened for
-     * asynchronous I/O, or that the length is zero */
+    /* The condition checks if either the FltGetStreamContext has failed, 
+     * minifilters should be skipped (FO_BYPASS_IO_ENABLED), or that the length is zero */
     if (
         status < 0 ||
-        (FltObjects->FileObject != NULL && (FltObjects->FileObject->Flags >> 8 & 1) != 0 || readLength == 0)
+        (FltObjects->FileObject != NULL && (FltObjects->FileObject->Flags & FO_BYPASS_IO_ENABLED) != 0 || readLength == 0)
     )
     {
         return_status = FLT_PREOP_SUCCESS_NO_CALLBACK;
