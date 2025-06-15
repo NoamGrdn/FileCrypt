@@ -2321,7 +2321,7 @@ FCPreWrite(
             }
             goto FCPreWrite_set_allocation_failure_status;
         }
-        if ((*(byte*)((longlong)&((PFLT_CALLBACK_DATA)generalPtr)->Thread + 2) & 5) == 0)
+        if (((PMDL)generalPtr)->MdlFlags & (MDL_MAPPED_TO_SYSTEM_VA | MDL_SOURCE_IS_NONPAGED_POOL) == 0)
         {
             /* Map MDL to get virtual address */
             setter = MmMapLockedPagesSpecifyCache(
