@@ -2200,10 +2200,10 @@ FCPreWrite(
     
     /* The function exits early if:
      * Stream context retrieval failed (file isn't encrypted)
-     * The FO_ASYNC_IO flag is set (asynchronous I/O)
+     * The FO_BYPASS_IO_ENABLED flag is set (skip minifilters)
      * The write length is zero (nothing to encrypt)
      */
-    if (ioStatus < 0 || FltObjects->FileObject != NULL && (FltObjects->FileObject->Flags >> 8 & 1) != 0)
+    if (ioStatus < 0 || FltObjects->FileObject != NULL && (FltObjects->FileObject->Flags & FO_BYPASS_IO_ENABLED) != 0)
     {
         return_status = FLT_PREOP_SUCCESS_NO_CALLBACK;
         goto FCPreWrite_cleanup_and_return;
