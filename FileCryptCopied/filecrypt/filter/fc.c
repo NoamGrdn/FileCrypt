@@ -247,7 +247,7 @@ FCInstanceSetup(
     PFLT_VOLUME_PROPERTIES volumeProperties = NULL;
     PFILE_FS_VOLUME_INFORMATION fsVolumeInfo = NULL;
     PDEVICE_OBJECT highestDeviceObject;
-    PDEVICE_OBJECT LowerDeviceObject;
+    PDEVICE_OBJECT lowerDeviceObject;
     NTSTATUS return_status = STATUS_FLT_DO_NOT_ATTACH;
     USHORT fileSystemDeviceNameLength;
     BOOLEAN doesVolumeNotSupportRemovableMedia;
@@ -271,7 +271,7 @@ FCInstanceSetup(
     {
         goto FCInstanceSetup_cleanup_and_return;
     }
-    
+
     volumeProperties = ExAllocatePool2(0x100, 0x248, POOL_TAG_FCvp);
 
     if (volumeProperties == NULL)
@@ -319,7 +319,7 @@ FCInstanceSetup(
         }
 
         /* Check if the VolumeLabelLength is 6 wchars in length (12/13 byte longs).
-         * If it is, than compare the VolumeLabel with the string "SDCARD" */
+         * If it is, then compare the VolumeLabel with the string "SDCARD" */
         if ((fsVolumeInfo->VolumeLabelLength & 0xfffffffe) == 12)
         {
             compResult = _wcsnicmp(
@@ -339,7 +339,7 @@ FCInstanceSetup(
         status = FCpRetrieveAppPairingId(FltObjects);
         if (status < 0)
         {
-        joined_r0x0001c0011463:
+        FCInstanceSetup_sd_card_check:
             /* On a non-mobile OS, if the app pairing id is not found, only continue if the volume is an SDCARD */
             if (!isVolumeSdCard)
             {
@@ -350,7 +350,7 @@ FCInstanceSetup(
     else if (doesVolumeNotSupportRemovableMedia)
     {
         /* On mobile continue attachment process only on sd cards */
-        goto joined_r0x0001c0011463;
+        goto FCInstanceSetup_sd_card_check;
     }
 
     volumeSectorSize = 0x200;
@@ -422,28 +422,30 @@ FCInstanceSetup(
             volumeContext->EncryptionEnabled = 1;
             /* Initialize Bcrypt Alg Handle */
             encryptVolumeStartStatus = FCpEncVolumeStart(&volumeContext->BcryptAlgHandle);
-            /* if EnvVolumeStart and SetVolumeContext both succeed (that + 0x8.. & 0x8.. bit
-                fuckery checks if the highest bit is set which with NTSTATUS always means error) or
-               SetVolumeContext returned STATUS_FLT_CONTEXT_ALREADY_DEFINED (-0x3fe3fffe == 0xC01C0002L)
-               
-               => if (encryption setup went aight and set the volume / volume was already there) */
+            /* if EnvVolumeStart and SetVolumeContext both succeed
+             * (that + 0x8.. & 0x8.. bit checks if the highest bit is set which with NTSTATUS always means error)
+             * or SetVolumeContext returned STATUS_FLT_CONTEXT_ALREADY_DEFINED, we can continue
+             */
             if (
-                (-1 < encryptVolumeStartStatus) &&
+                -1 < encryptVolumeStartStatus &&
                 (
-                    (status = FltSetVolumeContext(
-                            FltObjects->Volume,
-                            FLT_SET_CONTEXT_KEEP_IF_EXISTS,
-                            volumeContext,
-                            NULL
-                        ),
-                        (status + 0x80000000U & 0x80000000) != 0 || (status == -0x3fe3fffe))
+                    status = FltSetVolumeContext(
+                        FltObjects->Volume,
+                        FLT_SET_CONTEXT_KEEP_IF_EXISTS,
+                        volumeContext,
+                        NULL
+                    ),
+                    (status + 0x80000000U & 0x80000000) != 0 || (status == STATUS_FLT_CONTEXT_ALREADY_DEFINED)
                 )
             )
             {
                 vqb = diskDeviceObject->Vpb;
                 isMobileOS = FsRtlIsMobileOS();
                 /* Checks if we are not on mobile and the device can persist ACLS */
-                if ((isMobileOS == FALSE) && ((vqb->DeviceObject->Flags & DO_SUPPORTS_PERSISTENT_ACLS) != 0))
+                if (
+                    isMobileOS == FALSE &&
+                    (vqb->DeviceObject->Flags & DO_SUPPORTS_PERSISTENT_ACLS) != 0
+                )
                 {
                     volumeContext->VerificationNeeded = FALSE;
                 }
@@ -454,29 +456,31 @@ FCInstanceSetup(
                     vqb_deviceObject = vqb->DeviceObject;
                     vqb_deviceObject->Flags = vqb_deviceObject->Flags | DO_SUPPORTS_PERSISTENT_ACLS;
                 }
-                if ((gFCFlags & FilterEmulatedExternalDriveFlagBit) != 0 && doesVolumeNotSupportRemovableMedia)
+
+                if (
+                    (gFCFlags & FilterEmulatedExternalDriveFlagBit) != 0 &&
+                    doesVolumeNotSupportRemovableMedia
+                )
                 {
                     highestDeviceObject = IoGetAttachedDeviceReference(diskDeviceObject);
 
                     while (highestDeviceObject != NULL)
                     {
-                        /* Apply the FILE_REMOVABLE_MEDIA characteristic to all devices in the stack
-                           (fltKernel.h: _FLT_VOLUME_PROPERTIES DeviceCharacteristics) */
+                        /* Apply the FILE_REMOVABLE_MEDIA characteristic to all devices in the stack */
                         highestDeviceObject->Characteristics =
-                            highestDeviceObject->Characteristics |FILE_REMOVABLE_MEDIA;
-                        LowerDeviceObject = IoGetLowerDeviceObject(highestDeviceObject);
+                            highestDeviceObject->Characteristics | FILE_REMOVABLE_MEDIA;
+                        lowerDeviceObject = IoGetLowerDeviceObject(highestDeviceObject);
                         ObfDereferenceObject(highestDeviceObject);
-                        highestDeviceObject = LowerDeviceObject;
+                        highestDeviceObject = lowerDeviceObject;
                     }
                 }
 
                 return_status = STATUS_SUCCESS;
 
-                /* if BypassAccessChecks is ON remove the FILE_DEVICE_SECURE_OPEN characteristic
-                   (fltKernel.h: _FLT_VOLUME_PROPERTIES DeviceCharacteristics) */
+                /* if BypassAccessChecks is ON remove the FILE_DEVICE_SECURE_OPEN characteristic */
                 if ((gFCFlags & BypassAccessChecksFlagBit) != 0)
                 {
-                    diskDeviceObject->Characteristics = diskDeviceObject->Characteristics & 0xfffffeff;
+                    diskDeviceObject->Characteristics = diskDeviceObject->Characteristics & ~FILE_DEVICE_SECURE_OPEN;
                 }
             }
         }
@@ -913,7 +917,12 @@ FCpEncVolumeStart(
     ULONG pcbResult = 0;
     ULONG blockLength;
 
-    status = BCryptOpenAlgorithmProvider(&AlgHandle->BcryptAlgHandle, L"AES",NULL, BCRYPT_PROV_DISPATCH);
+    status = BCryptOpenAlgorithmProvider(
+        &AlgHandle->BcryptAlgHandle,
+        L"AES",
+        NULL,
+        BCRYPT_PROV_DISPATCH
+    );
 
     if (-1 < status)
     {
@@ -2060,7 +2069,6 @@ FCPreRead_cleanup_and_return:
 
 /* This function checks for the existence of a special marker file on a volume to determine if the
  * volume has been "paired" with a Windows application */
-// todo this always returns STATUS_SUCCESS and in this case, makes no sense in FCInstanceSetup
 NTSTATUS
 FCpRetrieveAppPairingId(
     PCFLT_RELATED_OBJECTS FltObjects
