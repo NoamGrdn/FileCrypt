@@ -1648,8 +1648,9 @@ FCPreCreate(
                         0
                     );
 
-                    /* If KeExpandKernelStackAndCalloutEx does not succeed, try do find the chamber and the security
-                     * descriptor here now */
+                    /* If KeExpandKernelStackAndCalloutEx fails, try to find the chamber and the security
+                     * descriptor here, right now
+                     */
                     if (kernelStackStatus < 0)
                     {
                         fullPathBuffer = NULL;
@@ -1737,6 +1738,7 @@ FCPreCreate(
                         accessMask = chamberData.ChamberType;
                         chamberId = chamberData.ChamberId;
                     }
+                    
                     if (-1 < chamberData.Status)
                     {
                         chamberData.Status = STATUS_SUCCESS;
@@ -1777,11 +1779,14 @@ FCPreCreate(
                                     }
                                     goto FCPreCreate_access_not_modified_2;
                                 }
+                                
                                 newCreateOptions = FILE_OVERWRITE;
+                                
                                 if (fileCreateOptionsHighByte != 5)
                                 {
                                     newCreateOptions = FILE_OPEN;
                                 }
+                                
                                 /* Setting the high 8 bits which contain the CreateOptions flags
                                    See fltKernel.h _FLT_PARAMETERS */
                                 (Data->Iopb->Parameters).Create.Options =
@@ -1814,6 +1819,7 @@ FCPreCreate(
                             FCPreCreate_access_not_modified_2:
                                 isAccessModified = '\0';
                             }
+                            
                             if (chamberData.Status < 0)
                             {
                                 if ((Microsoft_Windows_FileCryptEnableBits & 2) != 0)
@@ -1821,9 +1827,11 @@ FCPreCreate(
                                     McTemplateK0zd_EtwWriteTransfer(
                                         Data, eventParam1, eventParam3, chamberPath.Buffer, chamberData.Status);
                                 }
+                                
                                 goto FCPreCreate_return_no_post_op;
                             }
                         }
+                        
                         isMobile = FsRtlIsMobileOS();
                         if (isMobile == '\0')
                         {
@@ -1872,7 +1880,9 @@ FCPreCreate(
                         *CompletionContext = lookasideListEntry;
                         goto FCPreCreate_cleanup;
                     }
+                    
                     isChamberPathSet = TRUE;
+                    
                     if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
                     {
                         errorEventDescriptor = &ObtainSdAndChamberIdFailure;
