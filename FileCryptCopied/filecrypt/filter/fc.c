@@ -1490,30 +1490,16 @@ FCPreCreate(
         fileObject = FltObjects->FileObject;
         fileNameLength = fileObject->FileName.Length;
 
-        /* 1. (Data->Iopb->Parameters).Create.Options & 0x2000) == 0 => Checks that the
-         * FILE_OPEN_REPARSE_POINT bit is not set, meaning we're not trying to open a reparse point (wdm.h)
-         * [Reparse points are file system objects used to extend the attributes of a file system. Not all
-         * file systems support reparse points; for example, NTFS and ReFS support them, but the FAT file
-         * system doesn't.:]
-         * 
-         * 2. 2 < fileNameLength => The file name is greater than 2
-         * 
-         * 3. (fileObject->FileName).Buffer[(fileNameLength >> 1) - 1] == L'\\'
-         *  This checks if there's a backslash character at a specific position:
-         *  (fileNameLength >> 1) right-shifts the length by 1 bit because Windows filenames are stored as wide characters.
-         *  (fileNameLength >> 1) - 1 subtracts 1 to calculate the index of the last character in
-         * the filename.
-         *  == L'\\' checks if that character is a wide character backslash
-         */
-        if ((Data->Iopb->Parameters.Create.Options & 0x2000) == 0 &&
+        if (
+            (Data->Iopb->Parameters.Create.Options & FILE_OPEN_BY_FILE_ID) == 0 &&
             2 < fileNameLength &&
             fileObject->FileName.Buffer[(fileNameLength >> 1) - 1] == L'\\'
         )
         {
             /* This shortens the filename length by 2 bytes (which is 1 wide character). Since the code just
-               determined that the last character was a backslash (\), this effectively removes that trailing
-               backslash from the filename by adjusting the length field, without actually modifying the buffer
-                */
+             * determined that the last character was a backslash, and that the filename is not going to be an Id,
+             * it removes that trailing backslash from the filename by adjusting the length field
+             */
             (fileObject->FileName).Length = fileNameLength - 2;
         }
 
@@ -1579,8 +1565,10 @@ FCPreCreate(
                 fileNameLength = (fileNameInfo->FinalComponent).Length;
                 totalPathLength = fileNameLength + 2 + (fileNameInfo->ParentDir).Length;
 
-                if ((fileNameLength != 0) &&
-                    ((fileNameInfo->FinalComponent).Buffer[(ulonglong)(fileNameLength >> 1) - 1] != L'\\'))
+                if (
+                    fileNameLength != 0 &&
+                    fileNameInfo->FinalComponent.Buffer[(ulonglong)(fileNameLength >> 1) - 1] != L'\\'
+                )
                 {
                     totalPathLength = totalPathLength + 2;
                     fileNameEndsWithBackslash = FALSE;
@@ -2201,23 +2189,26 @@ FCPreWrite(
     PUCHAR plaintext;
 
     /* This function intercepts write operations before they reach the disk.
-       It performs encryption on the fly without application awareness.
-       It replaces the original write buffer with an encrypted version, making the File System write
-       encrypted data to disk. */
+     * It performs encryption on the fly without application awareness.
+     * It replaces the original write buffer with an encrypted version, making the File System write
+     * encrypted data to disk.
+     */
 
     setter = &streamContext;
     generalPtr = (NPAGED_LOOKASIDE_LIST*)FltObjects->Instance;
     ioStatus = FltGetStreamContext((PFLT_INSTANCE)generalPtr, FltObjects->FileObject, setter);
+    
     /* The function exits early if:
-       
-       Stream context retrieval failed (file isn't encrypted)
-       The FO_ASYNC_IO flag is set (asynchronous I/O)
-       The write length is zero (nothing to encrypt) */
+     * Stream context retrieval failed (file isn't encrypted)
+     * The FO_ASYNC_IO flag is set (asynchronous I/O)
+     * The write length is zero (nothing to encrypt)
+     */
     if (ioStatus < 0 || FltObjects->FileObject != NULL && (FltObjects->FileObject->Flags >> 8 & 1) != 0)
     {
         return_status = FLT_PREOP_SUCCESS_NO_CALLBACK;
         goto FCPreWrite_cleanup_and_return;
     }
+    
     if (writeLength == 0)
     {
         goto FCPreWrite_cleanup_and_return;
@@ -2237,7 +2228,7 @@ FCPreWrite(
         goto FCPreWrite_cleanup_and_return;
     }
     /* This calculation rounds up the write size to a multiple of the sector size, which is necessary
-       for block cipher encryption */
+     * for block cipher encryption */
     totalSizeToEncrypt = (writeLength - 1) + volumeContext->SectorSize & -volumeContext->SectorSize;
     if (totalSizeToEncrypt < 0x10001)
     {
@@ -2258,8 +2249,7 @@ FCPreWrite(
     if (ciphertext == NULL)
     {
     FCPreWrite_set_allocation_failure_status:
-        /* STATUS_INSUFFICIENT_RESOURCES */
-        ioStatus = -0x3fffff66;
+        ioStatus = STATUS_INSUFFICIENT_RESOURCES;
         return_status = FLT_PREOP_COMPLETE;
         if ((Microsoft_Windows_FileCryptEnableBits & 1) == 0)
         {
