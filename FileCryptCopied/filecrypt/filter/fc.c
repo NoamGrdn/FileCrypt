@@ -1886,7 +1886,8 @@ FCPreCreate(
     }
 FCPreCreate_return_no_post_op:
     /* Only way to get here is with a goto after some sort of failure.
-       The return status will be changed later to FLT_PREOP_COMPLETE. */
+     * The return status will be changed later to FLT_PREOP_COMPLETE.
+     */
     return_status = FLT_PREOP_SUCCESS_WITH_CALLBACK;
     lookasideListEntry = NULL;
 FCPreCreate_cleanup:
@@ -1922,7 +1923,7 @@ FCPreCreate_cleanup:
             eventParam1 = &gPre2PostCreateContextList;
             ExFreeToNPagedLookasideList(&gPre2PostCreateContextList, lookasideListEntry);
         }
-        /* Returning FLT_PREOP_COMPLETE must be accompanied with an IoStatus set */
+        /* Returning FLT_PREOP_COMPLETE must be accompanied by an IoStatus set */
         (Data->IoStatus).Status = chamberData.Status;
         (Data->IoStatus).Information = 0;
         /* When this routine returns FLT_PREOP_COMPLETE, FltMgr won't send the I/O operation to any
