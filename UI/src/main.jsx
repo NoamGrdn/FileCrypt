@@ -247,26 +247,6 @@ sequenceDiagram
                 <div className="diagram-container">
                     <div id="mermaid-diagram"></div>
                 </div>
-
-                <div className="flow-legend">
-                    <h4>🎨 Flow Legend</h4>
-                    <div className="legend-item">
-                        <div className="legend-color" style={{background: '#667eea'}}></div>
-                        <span>Synchronous Operations (Direct calls)</span>
-                    </div>
-                    <div className="legend-item">
-                        <div className="legend-color" style={{background: '#f093fb'}}></div>
-                        <span>Asynchronous Operations (Queued work)</span>
-                    </div>
-                    <div className="legend-item">
-                        <div className="legend-color" style={{background: '#84fab0'}}></div>
-                        <span>Security/Policy Operations</span>
-                    </div>
-                    <div className="legend-item">
-                        <div className="legend-color" style={{background: '#ffecd2'}}></div>
-                        <span>Cryptographic Operations</span>
-                    </div>
-                </div>
             </div>
 
             <div className="zoom-controls">
@@ -287,6 +267,7 @@ const FUNCTIONS_DATA = {
         description: 'Pre-operation callback for file/directory creation. Determines encryption policy and performs security checks.',
         calls: ['FCpObtainSecurityInfoCallout', 'FCpAccessCheck', 'StSecGetSecurityDescriptor'],
         details: 'Main entry point for file creation operations. Constructs full file path, determines chamber assignment, and validates access permissions.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/fc.c#L1446',
         pos: {
             x: 50,
             y: 80
@@ -298,6 +279,7 @@ const FUNCTIONS_DATA = {
         description: 'Post-operation callback for file/directory creation. Sets up encryption infrastructure.',
         calls: ['FCpEncStreamStart'],
         details: 'Establishes stream context for encryption, initializes BCrypt key handles, and registers the stream with filter manager.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/fc.c#L1132',
         pos: {
             x: 50,
             y: 550
@@ -308,7 +290,8 @@ const FUNCTIONS_DATA = {
         category: 'fc',
         description: 'Pre-operation callback for read operations. Prepares decryption context.',
         calls: [],
-        details: 'Validates stream context exists, sets up completion context for post-operation decryption.',
+        details: 'Determines if the file being read is encrypted, sets up completion context for post-operation decryption.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/fc.c#L1962',
         mobileOnly: true,
         pos: {
             x: 50,
@@ -321,6 +304,7 @@ const FUNCTIONS_DATA = {
         description: 'Post-operation callback for read operations. Performs decryption of data.',
         calls: ['FCDecryptWorker'],
         details: 'Manages decryption workflow, handles both synchronous and asynchronous decryption based on IRQL and data size.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/fc.c#L1292',
         mobileOnly: true,
         pos: {
             x: 50,
@@ -333,6 +317,7 @@ const FUNCTIONS_DATA = {
         description: 'Pre-operation callback for write operations. Encrypts data before writing to disk.',
         calls: ['FCpEncEncrypt'],
         details: 'Intercepts write operations, allocates shadow buffers, performs encryption, and redirects I/O to encrypted data.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/fc.c#L2178',
         mobileOnly: true
     },
     FCPostWrite: {
@@ -341,6 +326,7 @@ const FUNCTIONS_DATA = {
         description: 'Post-operation callback for write operations. Cleanup encrypted buffers.',
         calls: ['FCFreeShadowBuffer'],
         details: 'Releases resources allocated during pre-write, frees encrypted buffers and completion contexts.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/fc.c#L1412',
         mobileOnly: true
     },
 
@@ -351,6 +337,7 @@ const FUNCTIONS_DATA = {
         description: 'Determines encryption chamber and security descriptor for a file path.',
         calls: ['StSecGetSecurityDescriptor'],
         details: 'Core security policy resolution function. Maps file paths to encryption chambers and security descriptors.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/fc.c#L1045',
         pos: {
             x: 400,
             y: 40
@@ -361,7 +348,8 @@ const FUNCTIONS_DATA = {
         category: 'fc',
         description: 'Performs access control checks using security descriptors.',
         calls: [],
-        details: 'Validates user permissions against security descriptors, handles access modifications for encrypted files.',
+        details: 'Validates user permissions against security descriptors, handles access modifications for encrypted files, determines whether a file access operation should be allowed based on security',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/fc.c#L512',
         pos: {
             x: 400,
             y: 150
@@ -370,9 +358,10 @@ const FUNCTIONS_DATA = {
     FCpEncStreamStart: {
         name: 'FCpEncStreamStart',
         category: 'fc',
-        description: 'Initializes encryption context for a file stream.',
+        description: 'Initializes a stream context for encryption or decryption operations',
         calls: ['StSecpGetChamberProfileKey', 'StSecpDeriveChamberProfileKey'],
         details: 'Sets up BCrypt key handles, retrieves or derives chamber-specific encryption keys.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/fc.c#L783',
         pos: {
             x: 400,
             y: 550
@@ -383,7 +372,8 @@ const FUNCTIONS_DATA = {
         category: 'fc',
         description: 'Encrypts data using AES-CBC before writing to disk.',
         calls: [],
-        details: 'Performs sector-aligned AES-CBC encryption on write data, handles initialization vectors.'
+        details: 'Performs sector-aligned AES-CBC encryption on write data, handles initialization vectors.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/fc.c#L686'
     },
     FCpEncDecrypt: {
         name: 'FCpEncDecrypt',
@@ -391,6 +381,7 @@ const FUNCTIONS_DATA = {
         description: 'Decrypts data read from disk using AES-CBC.',
         calls: [],
         details: 'Performs sector-aligned AES-CBC decryption on read data, handles zeroing offsets for security.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/fc.c#L612',
         pos: {
             x: 550,
             y: 170
@@ -402,6 +393,7 @@ const FUNCTIONS_DATA = {
         description: 'Worker function for asynchronous decryption operations.',
         calls: ['FCpEncDecrypt'],
         details: 'Handles both immediate and queued decryption, manages MDL mapping and buffer access.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/fc.c#L57',
         pos: {
             x: 300,
             y: 170
@@ -412,7 +404,8 @@ const FUNCTIONS_DATA = {
         category: 'fc',
         description: 'Frees allocated shadow buffers used for encryption.',
         calls: [],
-        details: 'Releases memory allocated for encrypted data buffers, handles both lookaside list and pool allocations.'
+        details: 'Releases memory allocated for encrypted data buffers, handles both lookaside list and pool allocations.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/fc.c#L208'
     },
 
     // StSec security functions
@@ -422,6 +415,7 @@ const FUNCTIONS_DATA = {
         description: 'Main security policy lookup function. Returns security descriptor and chamber info.',
         calls: ['StSecpGetStorageFolderStringSecurityDescriptor', 'StSecpFindFolderPropertyPolicyElement'],
         details: 'Culmination of path-based security model. Resolves security descriptors and encryption chambers from policy cache.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L129',
         pos: {
             x: 700,
             y: 100
@@ -432,7 +426,9 @@ const FUNCTIONS_DATA = {
         category: 'stsec',
         description: 'Retrieves and processes security descriptor strings for folder paths.',
         calls: ['StSecpFindSecurityDescriptorPolicyElement', 'StSecpGetParameterValue', 'StSecpCheckConditionalPolicy'],
-        details: 'Finds matching security policies, processes parameters in templates, constructs final security descriptor strings.',
+        details: `When the driver needs to make security decisions about file access, this function finds the matching security policy template from the cache, 
+                processes any parameters in the template, substitutes those parameters with actual values, constructs the final security descriptor string`,
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L2671',
         pos: {
             x: 980,
             y: 40
@@ -441,9 +437,10 @@ const FUNCTIONS_DATA = {
     StSecpFindSecurityDescriptorPolicyElement: {
         name: 'StSecpFindSecurityDescriptorPolicyElement',
         category: 'stsec',
-        description: 'Searches security descriptor cache for matching path patterns.',
+        description: 'Searches through the security descriptor cache to find an entry whose path pattern matches the input path',
         calls: [],
         details: 'Performs path pattern matching including parameterized segments like <PackageFamilyName>.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L1237',
         pos: {
             x: 1400,
             y: 40
@@ -454,7 +451,9 @@ const FUNCTIONS_DATA = {
         category: 'stsec',
         description: 'Searches folder property cache for encryption chamber assignments.',
         calls: [],
-        details: 'Simple path matching to determine chamber assignments for specific folders.',
+        details: `This function searches through the folder property cache to find an entry with a path that matches the input path. 
+                Unlike the security descriptor lookup, this function performs simpler path matching without parameter substitution.`,
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L1139',
         pos: {
             x: 980,
             y: 150
@@ -466,6 +465,7 @@ const FUNCTIONS_DATA = {
         description: 'Retrieves cached encryption keys for a chamber.',
         calls: [],
         details: 'Looks up chamber-specific encryption keys from memory cache, updates access timestamps.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L1485',
         pos: {
             x: 700,
             y: 500
@@ -474,9 +474,10 @@ const FUNCTIONS_DATA = {
     StSecpDeriveChamberProfileKey: {
         name: 'StSecpDeriveChamberProfileKey',
         category: 'stsec',
-        description: 'Derives new encryption keys for chambers using HMAC-based key derivation.',
+        description: `Creates cryptographic keys for encryption chambers when they're not found in the key cache, using a deterministic derivation process`,
         calls: ['StSecpGetMasterKey', 'StSecpAddChamberProfileKey'],
-        details: 'Creates Install and Data keys from master key using HMAC-SHA256, adds to cache.',
+        details: 'Derives new encryption keys for chambers using HMAC-based key derivation',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L929',
         pos: {
             x: 700,
             y: 600
@@ -488,6 +489,7 @@ const FUNCTIONS_DATA = {
         description: 'Retrieves or generates the master encryption key.',
         calls: ['StSecpReadSealedKeyBlob', 'StSecpUnsealKey', 'StSecpSealKey', 'StSecpWriteSealedKeyBlob'],
         details: 'Manages TPM-sealed master key lifecycle: generation, sealing, unsealing, and persistence.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L1860',
         pos: {
             x: 1100,
             y: 530
@@ -498,7 +500,8 @@ const FUNCTIONS_DATA = {
         category: 'stsec',
         description: 'Adds derived encryption keys to the memory cache.',
         calls: [],
-        details: 'Stores chamber keys in generic table cache, manages cache size and cleanup triggers.',
+        details: `Stores newly derived encryption keys in a memory cache to avoid expensive re-derivation from the master key for subsequent operations`,
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L438',
         pos: {
             x: 1100,
             y: 630
@@ -507,9 +510,10 @@ const FUNCTIONS_DATA = {
     StSecpGetParameterValue: {
         name: 'StSecpGetParameterValue',
         category: 'stsec',
-        description: 'Converts parameter types to Security Identifiers (SIDs).',
+        description: `Handles the conversion of different types of identifiers into Security Identifiers (SIDs), which are then used for access control decisions`,
         calls: ['StSecpGetSidFromUserName', 'StSecpGetSidFromPackageFamilyName', 'KappxGetSecurityDescriptorStringForPackageFullName', 'StSecpGetSidFromPackageFullName', 'StSecpGetSidFromProductId'],
         details: 'Handles different identifier types: usernames, package names, product IDs, converting them to SIDs.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L2013',
         pos: {
             x: 1400,
             y: 120
@@ -521,6 +525,7 @@ const FUNCTIONS_DATA = {
         description: 'Generates SID from Windows Store app package family name.',
         calls: ['KappxGetPackageSidFromPackageFamilyNameInRegistry', 'StSecpGetAppSid'],
         details: 'Tries registry lookup first, falls back to algorithmic SID generation using cryptographic hashing.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L2544',
         pos: {
             x: 1900,
             y: 140
@@ -532,6 +537,7 @@ const FUNCTIONS_DATA = {
         description: 'Extracts family name from full package name and generates SID.',
         calls: ['StSecpPackageFamilyNameFromFullName', 'StSecpGetSidFromPackageFamilyName'],
         details: 'Parses full package name format to extract family name component.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L2574',
         pos: {
             x: 1850,
             y: 290
@@ -543,6 +549,7 @@ const FUNCTIONS_DATA = {
         description: 'Generates SID from product ID.',
         calls: ['StSecpGetAppSid'],
         details: 'Converts product IDs to uppercase and generates deterministic SIDs.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L2598',
         pos: {
             x: 1850,
             y: 360
@@ -554,6 +561,7 @@ const FUNCTIONS_DATA = {
         description: 'Copies username as SID (simplified implementation).',
         calls: [],
         details: 'Simple username copying rather than true SID conversion.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L2619',
         pos: {
             x: 1850,
             y: 80
@@ -564,7 +572,9 @@ const FUNCTIONS_DATA = {
         category: 'stsec',
         description: 'Generates deterministic SID using cryptographic hashing.',
         calls: [],
-        details: 'Uses SHA-256 hash to create consistent SIDs with custom authority (S-1-15-2-...).',
+        details: `Generates a Security Identifier (SID) from an input string - ProductId or PackageFamilyName.
+                Uses cryptographic hashing to ensure that the same input always produces the same SID`,
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L1379',
         pos: {
             x: 2350,
             y: 120
@@ -576,6 +586,7 @@ const FUNCTIONS_DATA = {
         description: 'Extracts package family name from full package name.',
         calls: [],
         details: 'Parses Windows Store package naming format, extracts PublisherName.AppName_PublisherID.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L3127',
         pos: {
             x: 2350,
             y: 290
@@ -586,7 +597,9 @@ const FUNCTIONS_DATA = {
         category: 'stsec',
         description: 'Checks if package is in debug profile registry.',
         calls: [],
-        details: 'Determines debug mode status by checking registry key existence.',
+        details: `checks whether the provided parameter is contained in a specific registry that decides whether 
+                    this value is a debug profile. The "conditional" aspect refers to whether it is in debug mode or not`,
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L797',
         pos: {
             x: 1400,
             y: 200
@@ -597,7 +610,8 @@ const FUNCTIONS_DATA = {
         category: 'stsec',
         description: 'Seals encryption key using TPM for secure storage.',
         calls: [],
-        details: 'Uses TPM to create sealed key blob that can only be unsealed by the same TPM.',
+        details: 'Takes a raw (unprotected) master key and transforms it into a sealed key blob that can only be unsealed by the specific TPM that created it',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L3313',
         pos: {
             x: 1500,
             y: 590
@@ -608,7 +622,9 @@ const FUNCTIONS_DATA = {
         category: 'stsec',
         description: 'Unseals TPM-protected encryption key.',
         calls: [],
-        details: 'Decrypts sealed key blob using TPM, restoring original master key.',
+        details: `Decrypts sealed key blob using TPM, restoring original master key. 
+                This function is responsible for "unsealing" (decrypting) the master key that was previously protected using the Trusted Platform Module's (TPM) capabilities`,
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L3477',
         pos: {
             x: 1500,
             y: 520
@@ -619,7 +635,9 @@ const FUNCTIONS_DATA = {
         category: 'stsec',
         description: 'Reads sealed key blob from registry storage.',
         calls: [],
-        details: 'Retrieves encrypted master key from registry at fixed storage location.',
+        details: `Retrieves encrypted master key from registry at fixed storage location. 
+                Reads an encrypted key blob from secure storage (the registry) and returns both the blob itself and its size to the caller`,
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L3223',
         pos: {
             x: 1500,
             y: 450
@@ -631,6 +649,7 @@ const FUNCTIONS_DATA = {
         description: 'Writes sealed key blob to registry storage.',
         calls: [],
         details: 'Persists encrypted master key to registry for future use.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/stsec.c#L3610',
         pos: {
             x: 1500,
             y: 660
@@ -643,7 +662,9 @@ const FUNCTIONS_DATA = {
         category: 'kappx',
         description: 'Obtains security descriptor for Windows Store app package.',
         calls: ['KappxGetPackageRootPathForPackageFullName'],
-        details: 'Retrieves security descriptor from package directory or provides default SDDL string.',
+        details: `Obtains a security descriptor string for a Windows Store app (UWP application) based on its package full name. 
+                It enables the driver to apply different security policies to different Windows Store app`,
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/kappx.c#L397',
         pos: {
             x: 1850,
             y: 210
@@ -655,6 +676,7 @@ const FUNCTIONS_DATA = {
         description: 'Locates filesystem path where Windows Store app is installed.',
         calls: [],
         details: 'Constructs full path to package installation directory using registry PackageRoot value.',
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/kappx.c#L24',
         pos: {
             x: 2350,
             y: 210
@@ -665,7 +687,10 @@ const FUNCTIONS_DATA = {
         category: 'kappx',
         description: 'Extracts app SID from registry using package family name.',
         calls: [],
-        details: 'Queries PackageSidRef registry key to retrieve stored SID for Windows Store app.',
+        details: `Extracts a Security Identifier (SID) for a Windows Store app from the registry, using its package family name. 
+                It retrieves the SID associated with a package family name by querying the Windows registry. 
+                This SID represents the security principal of the app`,
+        link: 'https://github.com/NoamGrdn/FileCrypt/blob/ab6fc63c9b5320b5c4515d94b468a1d955449efb/FileCryptCopied/filecrypt/filter/kappx.c#L160',
         pos: {
             x: 2350,
             y: 50
@@ -873,8 +898,11 @@ const FileCryptDriverExplorer = () => {
                     <p className="text-lg text-gray-600 mb-2">
                         Interactive Research Showcase • Windows Kernel File System Filter Driver
                     </p>
-                    <div className="flex items-center space-x-4 text-sm text-gray-500">
+                    <div className="flex items-center space-x-4 text-sm text-gray-500 mb-2">
                         <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">Desktop OS Mode: Registers only Create callbacks (FCPreCreate, FCPostCreate) - Read/Write operations are not intercepted</span>
+                    </div>
+                    <div className="flex items-center space-x-4 text-sm text-gray-500">
+                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">Mobile OS Mode: Registers Create callbacks (FCPreCreate, FCPostCreate) and Read/Write callbacks (FCPreRead, FCPostRead, FCPreWrite, FCPostWrite)</span>
                     </div>
                 </div>
             </div>
@@ -1075,6 +1103,16 @@ const FileCryptDriverExplorer = () => {
                                                     <h5 className="font-medium text-gray-900 mb-2">Implementation
                                                         Details</h5>
                                                     <p className="text-gray-600 text-sm">{selectedFunction.details}</p>
+                                                </div>
+
+                                                <div>
+                                                    <a className="flex space-x-2" href={selectedFunction.link} class="link-button" target="_blank">
+                                                        <button
+                                                            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                                                        >
+                                                            <span>Link to the function in GitHub</span>
+                                                        </button>
+                                                    </a>
                                                 </div>
 
                                                 {selectedFunction.calls && selectedFunction.calls.length > 0 && (

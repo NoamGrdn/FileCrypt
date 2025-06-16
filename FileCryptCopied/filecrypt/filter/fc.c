@@ -1954,7 +1954,7 @@ FCPreCreate_cleanup:
 
 /* This function:
  * 
- * 1. Determins if the file being read is encrypted
+ * 1. Determines if the file being read is encrypted
  * 2. Sets up the necessary context for decryption
  * 3. Decides whether a post-operation callback is needed
  */
