@@ -1080,7 +1080,7 @@ FCpObtainSecurityInfoCallout(
         goto FCpObtainSecurityInfoCallout_return;
     }
 
-    /* If StSecGetSecurityDescriptor succeeded, the current file/directory were succsessfuly resolved to
+    /* If StSecGetSecurityDescriptor succeeded, the current file/directory were successfully resolved to
      * a ChamberId, ChamberType and we can return.
      * Otherwise, check for predetermined chambers */
     if (ChamberData->ChamberId != NULL)
@@ -1669,7 +1669,7 @@ FCPreCreate(
                             chamberData.ChamberType = accessMask;
 
                             /* If no chamber ID explicitly found, check for default chambers */
-                            if ((chamberData.Status < 0) || (chamberIdStr != NULL))
+                            if (chamberData.Status < 0 || chamberIdStr != NULL)
                             {
                                 if ((chamberData.Status < 0) && ((Microsoft_Windows_FileCryptEnableBits & 1) != 0))
                                 {
