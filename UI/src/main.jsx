@@ -35,12 +35,13 @@ sequenceDiagram
     participant TPM as 🔑 TPM/Registry
     participant FS as 💾 File System
 
-    Note over FC: 🚀 Driver Initialization
-    FC->>TPM: Initialize master key (StSecpGetMasterKey)
-    TPM-->>FC: Sealed/Unsealed master key
-    FC->>TPM: Load security policies from registry
-    TPM-->>FC: Security descriptors & folder properties
-    FC->>FM: Register filter callbacks
+    Note over FM,StSec: 🚀 Driver Initialization
+    FM->>FC: Initialize the FileCrypt driver (DriverEntry)
+    FC->>FC: Read driver parameters (FCReadDriverParameters)
+    FC->>StSec: Initialize the security module (StSecInitialize)
+    StSec->>StSec: Initialize the cache for the security module
+    StSec->>StSec: Initialize the policy cache for the security descriptors
+    FC-->>FM: Registered filter callbacks and started filtering
 
     Note over App,FS: 📄 File Creation Flow
     App->>FM: CreateFile("\\\\Documents\\\\MyApp\\\\file.txt")
