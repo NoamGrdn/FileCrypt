@@ -1106,12 +1106,12 @@ const FileCryptDriverExplorer = () => {
                                                 </div>
 
                                                 <div>
-                                                    <a className="flex space-x-2" href={selectedFunction.link} class="link-button" target="_blank">
-                                                        <button
-                                                            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                                                        >
-                                                            <span>Link to the function in GitHub</span>
-                                                        </button>
+                                                   <a 
+                                                    href={selectedFunction.link} 
+                                                    target="_blank" rel="noopener noreferrer" 
+                                                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors link-button"
+                                                    >
+                                                        <span>Link to the function in GitHub</span>
                                                     </a>
                                                 </div>
 
