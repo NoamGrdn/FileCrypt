@@ -135,7 +135,7 @@ StSecGetSecurityDescriptor(
 {
     NTSTATUS return_status;
     int status;
-    CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY* policyElement;
+    PCUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY policyElement;
     PWCHAR stringBuffer;
     longlong stringLength;
     PWCHAR chamberId = NULL;
@@ -170,7 +170,7 @@ StSecGetSecurityDescriptor(
 
     /* converts the string-form security descriptor into a binary security descriptor that can be used
      * for access checks. The 1 parameter indicates this is SDDL format. */
-    if ((return_status < 0) ||
+    if (return_status < 0 ||
         (return_status = SeConvertStringSecurityDescriptorToSecurityDescriptor(
             securityDescString,
             1,
@@ -209,8 +209,11 @@ StSecGetSecurityDescriptor(
     }
 
     chamberIdStr = policyElement->ChamberId;
-    securityDescString = (PWCHAR)((ulonglong)securityDescString & 0xffffffff00000000 | (ulonglong)policyElement->
-        FolderId);
+
+    /* Zero out securityDescString and assign the FolderId (ChamberType) to it */
+    securityDescString = (PWCHAR)(
+        (ulonglong)securityDescString & 0xffffffff00000000 | policyElement->FolderId
+    );
 
     if (chamberIdStr == NULL)
     {
@@ -219,6 +222,7 @@ StSecGetSecurityDescriptor(
 
     stringLength = 0x7fffffff;
     stringBuffer = chamberIdStr;
+
     do
     {
         if (*stringBuffer == L'\0')
@@ -250,8 +254,10 @@ StSecGetSecurityDescriptor(
     stringLength = 0x7fffffff - stringLength;
 
     /* Check if this is a parameterized chamber ID (enclosed in <>) */
-    if ((*chamberIdStr == L'<') &&
-        (stringLength = stringSegmentLength + 0x7fffffff, chamberIdStr[stringSegmentLength + 0x7ffffffe] == L'>'))
+    if (
+        *chamberIdStr == L'<' &&
+        (stringLength = stringSegmentLength + 0x7fffffff, chamberIdStr[stringSegmentLength + 0x7ffffffe] == L'>')
+    )
     {
         /* For parameterized chamber IDs, perform path-based parameter resolution */
         paramName = policyElement->Path;
@@ -286,28 +292,38 @@ StSecGetSecurityDescriptor(
                     return_status = STATUS_NO_MEMORY;
                     goto StSecGetSecurityDescriptor_cleanup_and_return;
                 }
-                return_status =
-                    RtlStringCbCopyNW(paramName.Buffer, (ulonglong)componentName.Length + 2, componentName.Buffer,
-                                      (ulonglong)componentName.Length);
+
+                return_status = RtlStringCbCopyNW(
+                    paramName.Buffer,
+                    (ulonglong)componentName.Length + 2,
+                    componentName.Buffer,
+                    componentName.Length
+                );
                 goto joined_r0x0001c000f657;
             }
+
             /* Handle PackageFullName parameter */
             status = _wcsicmp(policyElement->ChamberId, L"<PackageFullName>");
             if (status != 0)
             {
-                return_status = -0x3fffffff;
+                return_status = STATUS_UNSUCCESSFUL;
                 goto StSecGetSecurityDescriptor_cleanup_and_return;
             }
+
             //paramName = (UNICODE_STRING)ZEXT816(0);
             paramName.Length = 0;
             paramName.MaximumLength = 0;
             paramName.Buffer = NULL;
 
             return_status = StSecpPackageFamilyNameFromFullName(&componentName, &paramName);
-            if (return_status < 0) goto StSecGetSecurityDescriptor_cleanup_and_return;
+            if (return_status < 0)
+            {
+                goto StSecGetSecurityDescriptor_cleanup_and_return;
+            }
             tempString = paramName;
             /* - For <PackageFamilyName> and <ProductId>, it uses the path component directly
-               - For <PackageFullName>, it calls StSecpPackageFamilyNameFromFullName to extract the family */
+             * - For <PackageFullName>, it calls StSecpPackageFamilyNameFromFullName to extract the family
+             */
         }
     }
     else
@@ -318,6 +334,7 @@ StSecGetSecurityDescriptor(
             return_status = STATUS_NO_MEMORY;
             goto StSecGetSecurityDescriptor_cleanup_and_return;
         }
+
         return_status = RtlStringCchCopyW(paramName.Buffer, stringSegmentLength + 0x80000000, policyElement->ChamberId);
     joined_r0x0001c000f657:
         tempString = paramName;
@@ -327,6 +344,7 @@ StSecGetSecurityDescriptor(
             goto StSecGetSecurityDescriptor_cleanup_and_return;
         }
     }
+
 StSecGetSecurityDescriptor_set_output_params:
     paramName = tempString;
     return_status = 0;
@@ -342,8 +360,10 @@ StSecGetSecurityDescriptor_cleanup_and_return:
 }
 
 
-NTSTATUS StSecInitialize(PDRIVER_OBJECT DriverObject)
-
+NTSTATUS
+StSecInitialize(
+    PDRIVER_OBJECT DriverObject
+)
 {
     NTSTATUS return_status;
     ULONG pcbResult[7];

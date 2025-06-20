@@ -62,40 +62,41 @@ FCDecryptWorker(
 {
     NTSTATUS status;
     PVOID ppvVar4;
-    PFLT_CALLBACK_DATA p_Var5;
-    PVOID event;
-    EVENT_DESCRIPTOR* eventDescriptor;
-    PVOID eventParam = &Params->CallbackData;
     ULONG zeroingOffset = 0;
     PCUSTOM_FC_READ_CONTEXT completionContext = Params->CompletionContext;
     PFLT_CALLBACK_DATA callbackData = Params->CallbackData;
-    PFLT_IO_PARAMETER_BLOCK parameterBlock = callbackData->Iopb;
-    PMDL mdl = (parameterBlock->Parameters).Read.MdlAddress;
+    PFLT_IO_PARAMETER_BLOCK iopb = callbackData->Iopb;
+    PMDL mdlAddress = (iopb->Parameters).Read.MdlAddress;
     ULONG sectorSize;
+    PEVENT_DESCRIPTOR eventDescriptor;
+    PVOID event;
+    PFLT_CALLBACK_DATA event2;
+    PVOID event3 = &Params->CallbackData;
 
-    if (mdl == NULL)
+    if (mdlAddress == NULL)
     {
-        if ((callbackData->Flags & 8) == 0)
+        if ((callbackData->Flags & FLTFL_CALLBACK_DATA_SYSTEM_BUFFER) == 0)
         {
-            p_Var5 = callbackData;
+            event2 = callbackData;
             status = FltLockUserBuffer(callbackData);
 
             if (status < 0)
             {
                 if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
                 {
-                    McTemplateK0d_EtwWriteTransfer(p_Var5, &LockUserBufferFailure, eventParam, status);
+                    McTemplateK0d_EtwWriteTransfer(event2, &LockUserBufferFailure, event3, status);
                 }
                 goto FCDecryptWorker_cleanup_and_return;
             }
 
-            mdl = (parameterBlock->Parameters).Read.MdlAddress;
+            mdlAddress = (iopb->Parameters).Read.MdlAddress;
             goto LAB_1c0002288;
         }
+
         // TODO
-        ppvVar4 = (parameterBlock->Parameters).LockControl.ProcessId;
+        ppvVar4 = (iopb->Parameters).Read.MdlAddress;
     FCDecryptWorker_decrypt:
-        mdl = (PMDL)callbackData;
+        mdlAddress = (PMDL)callbackData;
         status = FltGetFsZeroingOffset(callbackData, &zeroingOffset);
         if (-1 < status)
         {
@@ -108,11 +109,11 @@ FCDecryptWorker(
                 ppvVar4,
                 // TODO
                 *(int*)&(callbackData->IoStatus).Information + -1 + sectorSize & -sectorSize,
-                (parameterBlock->Parameters).CreatePipe.Parameters,
+                (iopb->Parameters).CreatePipe.Parameters,
                 zeroingOffset
             );
 
-            eventParam = (PVOID*)ppvVar4;
+            event3 = (PVOID*)ppvVar4;
             goto FCDecryptWorker_cleanup_and_return;
         }
 
@@ -125,12 +126,12 @@ FCDecryptWorker(
     else
     {
     LAB_1c0002288:
-        if ((*(byte*)((longlong)&((PFLT_CALLBACK_DATA)mdl)->Thread + 2) & 5) == 0)
+        if ((*(byte*)((longlong)&((PFLT_CALLBACK_DATA)mdlAddress)->Thread + 2) & 5) == 0)
         {
-            eventParam = (PVOID*)0x1;
+            event3 = (PVOID*)0x1;
 
             ppvVar4 = MmMapLockedPagesSpecifyCache(
-                mdl,
+                mdlAddress,
                 '\0',
                 MmCached,
                 NULL,
@@ -140,7 +141,7 @@ FCDecryptWorker(
         }
         else
         {
-            ppvVar4 = (((PFLT_CALLBACK_DATA)mdl)->IoStatus).Pointer;
+            ppvVar4 = (((PFLT_CALLBACK_DATA)mdlAddress)->IoStatus).Pointer;
         }
 
         if ((CUSTOM_FC_DECRYPT_PARAMS*)ppvVar4 != NULL)
@@ -157,7 +158,8 @@ FCDecryptWorker(
         eventDescriptor = &GetSystemAddressFailure;
         status = STATUS_INSUFFICIENT_RESOURCES;
     }
-    McTemplateK0d_EtwWriteTransfer(mdl, eventDescriptor, eventParam, status);
+
+    McTemplateK0d_EtwWriteTransfer(mdlAddress, eventDescriptor, event3, status);
 FCDecryptWorker_cleanup_and_return:
     FltReleaseContext(completionContext->VolumeContext);
     FltReleaseContext(completionContext->StreamContext);
@@ -170,7 +172,7 @@ FCDecryptWorker_cleanup_and_return:
         (callbackData->IoStatus).Information = 0;
         if ((Microsoft_Windows_FileCryptEnableBits & 2) != 0)
         {
-            McTemplateK0d_EtwWriteTransfer(event, &DecryptWorkerFailure, eventParam, status);
+            McTemplateK0d_EtwWriteTransfer(event, &DecryptWorkerFailure, event3, status);
         }
     }
 
@@ -1040,7 +1042,8 @@ FCpFreeChamberId(
 
 
 /* This function processes a file path and determines which encryption chamber (if any) should be
- * applied to it */
+ * applied to it
+ */
 VOID
 FCpObtainSecurityInfoCallout(
     PCUSTOM_FC_CHAMBER_DATA ChamberData
@@ -1309,30 +1312,34 @@ FCPostRead(
     memset(&decryptParamsSetter, 0, sizeof(decryptParamsSetter));
 
     /* The condition checks if:
-       1. FLTFL_POST_OPERATION_DRAINING is off => Not a cleanup call (fltKernel.h)
-       2. Whether the I/O operation succeeded (status >= 0)
-       3. Whether any data was actually read (Information != 0) */
+     * 1. FLTFL_POST_OPERATION_DRAINING is off => Not a cleanup call
+     * 2. Whether the I/O operation succeeded thus far
+     * 3. Whether any data was actually read
+     */
     if (
-        (Flags & 1) == 0 &&
+        (Flags & FLTFL_POST_OPERATION_DRAINING) == 0 &&
         -1 < CallbackData->IoStatus.Status &&
         CallbackData->IoStatus.Information != 0
     )
     {
         currentIrql = KeGetCurrentIrql();
-        /* THE IOQB PARAMETERS STRUCT HERE MIGHT BE WRONG
-           
-           This condition checks if immediate decryption is possible:
-           1. Either we're at a low IRQL (below DISPATCH_LEVEL)
-           2. Or the read size is small (< 131,073 bytes) AND either:
-             - An MDL (Memory Descriptor List) is available
-             - The FLTFL_CALLBACK_DATA_FS_FILTER_OPERATION flag is set
-           
-           The FLTFL_CALLBACK_DATA_FS_FILTER_OPERATION flag is raised. The flag indicates that the operation
-           is a file system filter operation */
+
+        /* Check if immediate decryption is possible:
+         * 1. Either we're at a low IRQL (below DISPATCH_LEVEL) allowing blocking operations
+         * 2. Or the read size is small (< 131,073 bytes) AND either:
+         *    - Parameters.Others.Argument5 is non-NULL (custom condition - purpose unclear)
+         *    - The FLTFL_CALLBACK_DATA_SYSTEM_BUFFER flag is set (system allocated buffer)
+         * 
+         * The FLTFL_CALLBACK_DATA_SYSTEM_BUFFER flag indicates the buffer is from 
+         * a non-paged pool and already locked down for safe access
+         */
         if (
             currentIrql < DISPATCH_LEVEL ||
             CallbackData->IoStatus.Information < 0x20001 &&
-            (CallbackData->Iopb->Parameters.Others.Argument5 != NULL || (CallbackData->Flags & 8) != 0)
+            (
+                CallbackData->Iopb->Parameters.Others.Argument5 != NULL ||
+                (CallbackData->Flags & FLTFL_CALLBACK_DATA_SYSTEM_BUFFER) != 0
+            )
         )
         {
             //decryptParamsSetter = (CUSTOM_FC_DECRYPT_PARAMS)CONCAT88(CompletionContext, CallbackData);
@@ -1738,7 +1745,7 @@ FCPreCreate(
                         accessMask = chamberData.ChamberType;
                         chamberId = chamberData.ChamberId;
                     }
-                    
+
                     if (-1 < chamberData.Status)
                     {
                         chamberData.Status = STATUS_SUCCESS;
@@ -1779,14 +1786,14 @@ FCPreCreate(
                                     }
                                     goto FCPreCreate_access_not_modified_2;
                                 }
-                                
+
                                 newCreateOptions = FILE_OVERWRITE;
-                                
+
                                 if (fileCreateOptionsHighByte != 5)
                                 {
                                     newCreateOptions = FILE_OPEN;
                                 }
-                                
+
                                 /* Setting the high 8 bits which contain the CreateOptions flags
                                    See fltKernel.h _FLT_PARAMETERS */
                                 (Data->Iopb->Parameters).Create.Options =
@@ -1819,7 +1826,7 @@ FCPreCreate(
                             FCPreCreate_access_not_modified_2:
                                 isAccessModified = '\0';
                             }
-                            
+
                             if (chamberData.Status < 0)
                             {
                                 if ((Microsoft_Windows_FileCryptEnableBits & 2) != 0)
@@ -1827,11 +1834,11 @@ FCPreCreate(
                                     McTemplateK0zd_EtwWriteTransfer(
                                         Data, eventParam1, eventParam3, chamberPath.Buffer, chamberData.Status);
                                 }
-                                
+
                                 goto FCPreCreate_return_no_post_op;
                             }
                         }
-                        
+
                         isMobile = FsRtlIsMobileOS();
                         if (isMobile == '\0')
                         {
@@ -1880,9 +1887,9 @@ FCPreCreate(
                         *CompletionContext = lookasideListEntry;
                         goto FCPreCreate_cleanup;
                     }
-                    
+
                     isChamberPathSet = TRUE;
-                    
+
                     if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
                     {
                         errorEventDescriptor = &ObtainSdAndChamberIdFailure;
@@ -1980,7 +1987,8 @@ FCPreRead(
      * minifilters should be skipped (FO_BYPASS_IO_ENABLED), or that the length is zero */
     if (
         status < 0 ||
-        (FltObjects->FileObject != NULL && (FltObjects->FileObject->Flags & FO_BYPASS_IO_ENABLED) != 0 || readLength == 0)
+        (FltObjects->FileObject != NULL && (FltObjects->FileObject->Flags & FO_BYPASS_IO_ENABLED) != 0 || readLength ==
+            0)
     )
     {
         return_status = FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -2188,8 +2196,8 @@ FCPreWrite(
     PVOID setter;
     PCUSTOM_FC_WRITE_CONTEXT lookasideEntry = NULL;
     PNPAGED_LOOKASIDE_LIST shadowBufferPtr;
-    NPAGED_LOOKASIDE_LIST* generalPtr;
-    EVENT_DESCRIPTOR* eventDescriptor;
+    PVOID generalPtr;
+    PEVENT_DESCRIPTOR eventDescriptor;
     uint totalSizeToEncrypt;
     FLT_PREOP_CALLBACK_STATUS return_status = FLT_PREOP_SUCCESS_NO_CALLBACK;
     UCHAR allocationTypeCopy = '\0';
@@ -2204,30 +2212,33 @@ FCPreWrite(
      * It replaces the original write buffer with an encrypted version, making the File System write
      * encrypted data to disk.
      */
-
     setter = &streamContext;
-    generalPtr = (NPAGED_LOOKASIDE_LIST*)FltObjects->Instance;
-    ioStatus = FltGetStreamContext((PFLT_INSTANCE)generalPtr, FltObjects->FileObject, setter);
-    
+    generalPtr = FltObjects->Instance;
+    ioStatus = FltGetStreamContext(generalPtr, FltObjects->FileObject, setter);
+
     /* The function exits early if:
      * Stream context retrieval failed (file isn't encrypted)
      * The FO_BYPASS_IO_ENABLED flag is set (skip minifilters)
      * The write length is zero (nothing to encrypt)
      */
-    if (ioStatus < 0 || FltObjects->FileObject != NULL && (FltObjects->FileObject->Flags & FO_BYPASS_IO_ENABLED) != 0)
+    if (
+        ioStatus < 0 ||
+        FltObjects->FileObject != NULL &&
+        (FltObjects->FileObject->Flags & FO_BYPASS_IO_ENABLED) != 0
+    )
     {
         return_status = FLT_PREOP_SUCCESS_NO_CALLBACK;
         goto FCPreWrite_cleanup_and_return;
     }
-    
+
     if (writeLength == 0)
     {
         goto FCPreWrite_cleanup_and_return;
     }
 
     setter = &volumeContext;
-    generalPtr = (NPAGED_LOOKASIDE_LIST*)FltObjects->Filter;
-    ioStatus = FltGetVolumeContext((PFLT_FILTER)generalPtr, FltObjects->Volume, setter);
+    generalPtr = FltObjects->Filter;
+    ioStatus = FltGetVolumeContext(generalPtr, FltObjects->Volume, setter);
 
     if (ioStatus < 0)
     {
@@ -2238,6 +2249,7 @@ FCPreWrite(
         return_status = FLT_PREOP_COMPLETE;
         goto FCPreWrite_cleanup_and_return;
     }
+
     /* This calculation rounds up the write size to a multiple of the sector size, which is necessary
      * for block cipher encryption */
     totalSizeToEncrypt = (writeLength - 1) + volumeContext->SectorSize & -volumeContext->SectorSize;
@@ -2252,11 +2264,12 @@ FCPreWrite(
     else
     {
         /* For large writes, allocate from pool */
-        generalPtr = (NPAGED_LOOKASIDE_LIST*)0x40;
+        generalPtr = 0x40;
         setter = (CUSTOM_FC_VOLUME_CONTEXT**)0x62734346;
         ciphertext = ExAllocatePool2(0x40, totalSizeToEncrypt, POOL_TAG_FCsb);
         allocationType = '\x02';
     }
+
     if (ciphertext == NULL)
     {
     FCPreWrite_set_allocation_failure_status:
@@ -2272,12 +2285,12 @@ FCPreWrite(
     {
         setter = NULL;
         generalPtr = ciphertext;
-        /* this is a call to IoAllocateMdl
-           
-           When the driver intercepts a write operation, it needs to replace the original plaintext data
-           with encrypted data. The original data might be described by an MDL (if present) or direct
-           buffer. By creating a new MDL for the encrypted buffer, the driver can redirect the I/O operation
-           to use the encrypted data instead. */
+        
+        /* When the driver intercepts a write operation, it needs to replace the original plaintext data
+         * with encrypted data. The original data might be described by an MDL (if present) or direct
+         * buffer. By creating a new MDL for the encrypted buffer, the driver can redirect the I/O operation
+         * to use the encrypted data instead.
+         */
         // mdl = (PMDL)(*(code*)0xa8fc)(ciphertext, totalSizeToEncrypt, 0, 0, 0);
         mdl = IoAllocateMdl(ciphertext, totalSizeToEncrypt, 0, 0, 0);
         allocationTypeCopy = allocationType;
@@ -2293,7 +2306,7 @@ FCPreWrite(
         /* This is a call to MmProbeAndLockPages */
         //(*(code*)0xa996)(mdl, 1);
         MmMdlPageContentsState(mdl, 1);
-        generalPtr = (NPAGED_LOOKASIDE_LIST*)(ioqb->Parameters).Others.Argument5;
+        generalPtr = (ioqb->Parameters).Others.Argument5;
 
         if (generalPtr == NULL)
         {
@@ -2319,7 +2332,7 @@ FCPreWrite(
                 generalPtr = (NPAGED_LOOKASIDE_LIST*)CallbackData;
                 /* Mark callback data as modified */
                 FltSetCallbackDataDirty(CallbackData);
-                /*  Set up completion context */
+                /*  Set up completion context */ 
                 lookasideEntry->Ciphertext = ciphertext;
                 lookasideEntry->AllocationType = allocationType;
                 lookasideEntry->VolumeContext = volumeContext;
@@ -2330,6 +2343,7 @@ FCPreWrite(
             }
             goto FCPreWrite_set_allocation_failure_status;
         }
+
         if (((PMDL)generalPtr)->MdlFlags & (MDL_MAPPED_TO_SYSTEM_VA | MDL_SOURCE_IS_NONPAGED_POOL) == 0)
         {
             /* Map MDL to get virtual address */
@@ -2346,22 +2360,27 @@ FCPreWrite(
         {
             setter = *(PVOID*)&(((PFLT_CALLBACK_DATA)generalPtr)->IoStatus).Status;
         }
+
         plaintext = (PUCHAR)setter;
         if ((CUSTOM_FC_VOLUME_CONTEXT**)setter != NULL)
         {
             goto FCPreWrite_encrypt;
         }
+
         ioStatus = STATUS_INSUFFICIENT_RESOURCES;
         return_status = FLT_PREOP_COMPLETE;
         if ((Microsoft_Windows_FileCryptEnableBits & 1) == 0)
         {
             goto FCPreWrite_cleanup_and_return;
         }
+
         eventDescriptor = &GetSystemAddressFailure;
     }
+
     return_status = FLT_PREOP_COMPLETE;
     ioStatus = STATUS_INSUFFICIENT_RESOURCES;
     McTemplateK0d_EtwWriteTransfer(generalPtr, eventDescriptor, setter, 0xc000009a);
+
 FCPreWrite_cleanup_and_return:
     if (return_status != FLT_PREOP_SUCCESS_WITH_CALLBACK)
     {
@@ -2370,23 +2389,28 @@ FCPreWrite_cleanup_and_return:
             setter = (PVOID)((ulonglong)setter & 0xffffffffffffff00 | (ulonglong)allocationTypeCopy);
             FCFreeShadowBuffer(generalPtr, ciphertext, allocationTypeCopy);
         }
+
         if (mdl != NULL)
         {
             IoFreeMdl(mdl);
         }
+
         if (volumeContext != NULL)
         {
             FltReleaseContext(volumeContext);
         }
+
         if (streamContext != NULL)
         {
             FltReleaseContext(streamContext);
         }
+
         if (lookasideEntry != NULL)
         {
             ExFreeToNPagedLookasideList(&gPre2PostIoContextList, lookasideEntry);
         }
     }
+
     if (return_status == FLT_PREOP_COMPLETE)
     {
         (CallbackData->IoStatus).Status = ioStatus;
@@ -2397,11 +2421,10 @@ FCPreWrite_cleanup_and_return:
                                            ioStatus);
         }
     }
+
     return return_status;
 }
 
-
-/* WARNING: Could not reconcile some variable overlaps */
 
 NTSTATUS
 FCReadDriverParameters(
