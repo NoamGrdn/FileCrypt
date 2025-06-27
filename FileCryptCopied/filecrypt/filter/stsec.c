@@ -2697,9 +2697,9 @@ StSecpGetStorageFolderStringSecurityDescriptor(
     longlong lVar2;
     UCHAR UVar3;
     NTSTATUS return_status;
-    CUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY* policyElement;
+    PCUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY policyElement;
     PWCHAR* ppWVar4;
-    longlong stringLength;
+    longlong securityDescriptorStrLength;
     PWCHAR currentChar;
     PUNICODE_STRING firstName;
     ulonglong halfOutputLength = 0;
@@ -2731,8 +2731,8 @@ StSecpGetStorageFolderStringSecurityDescriptor(
         return STATUS_INVALID_PARAMETER;
     }
 
-    /* Calculate string length */
-    stringLength = 0x7fffffff;
+    /* Calculate security descriptor length */
+    securityDescriptorStrLength = 0x7fffffff;
     do
     {
         if (*securityDescriptor == L'\0')
@@ -2741,20 +2741,17 @@ StSecpGetStorageFolderStringSecurityDescriptor(
         }
 
         securityDescriptor = securityDescriptor + 1;
-        stringLength = stringLength + -1;
+        securityDescriptorStrLength = securityDescriptorStrLength + -1;
     }
-    while (stringLength != 0);
+    while (securityDescriptorStrLength != 0);
 
     temp = STATUS_INVALID_PARAMETER;
-    if (stringLength != 0)
+    
+    if (securityDescriptorStrLength != 0)
     {
         temp = halfOutputLength;
     }
-    if (stringLength == 0)
-    {
-        return temp;
-    }
-    if (stringLength == 0)
+    if (securityDescriptorStrLength == 0)
     {
         return temp;
     }
@@ -2767,7 +2764,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
     policyPath.MaximumLength = policyElement->Path.MaximumLength;
     policyPath.Buffer = policyElement->Path.Buffer;
 
-    totalOutputLength = (0x7fffffff - stringLength) * 2 + 2;
+    totalOutputLength = (0x7fffffff - securityDescriptorStrLength) * 2 + 2;
     /* FsRtlDissectName seperates parts of a path, for example:
      * for Path = "Folder\SubFolder\file.txt" =>
      * FirstName = "Folder"
@@ -2785,7 +2782,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
     maxStringLength = halfOutputLength;
     while (true)
     {
-        return_status = (NTSTATUS)temp;
+        return_status = temp;
         firstName = &sid;
         /* Process each segment pair */
         FsRtlDissectName(policyPath, firstName, &remainingPath);
@@ -2796,8 +2793,8 @@ StSecpGetStorageFolderStringSecurityDescriptor(
         {
             break;
         }
-        if ((*parameterName.Buffer == L'<') &&
-            (parameterName.Buffer[(ulonglong)(parameterName.Length >> 1) - 1] == L'>'))
+        if (*parameterName.Buffer == L'<' &&
+            parameterName.Buffer[(ulonglong)(parameterName.Length >> 1) - 1] == L'>')
         {
             if ((sid.Buffer == NULL) || (parameterCount == 2))
             {
@@ -2824,23 +2821,23 @@ StSecpGetStorageFolderStringSecurityDescriptor(
                 goto StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return;
             }
 
-            stringLength = 0x7fffffff;
+            securityDescriptorStrLength = 0x7fffffff;
             do
             {
                 if (*(WCHAR*)ppWVar4 == L'\0') break;
                 ppWVar4 = (PWCHAR*)((longlong)ppWVar4 + 2);
-                stringLength = stringLength + -1;
+                securityDescriptorStrLength = securityDescriptorStrLength + -1;
             }
-            while (stringLength != 0);
+            while (securityDescriptorStrLength != 0);
 
             temp = STATUS_INVALID_PARAMETER;
 
-            if (stringLength != 0)
+            if (securityDescriptorStrLength != 0)
             {
                 temp = halfOutputLength;
             }
             return_status = (NTSTATUS)temp;
-            if ((stringLength == 0) || (lVar2 = (0x7fffffff - stringLength) * 2, stringLength == 0))
+            if ((securityDescriptorStrLength == 0) || (lVar2 = (0x7fffffff - securityDescriptorStrLength) * 2, securityDescriptorStrLength == 0))
             {
                 goto StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return;
             }
@@ -2877,6 +2874,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
         policyPath.MaximumLength = remainingPath.MaximumLength;
         policyPath.Buffer = remainingPath.Buffer;
     }
+    
     if (isDebugProfile != '\0')
     {
         return_status = RtlStringCbLengthW(policyElement->DebugValue, firstName, (size_t*)&parameterLength);
@@ -2885,8 +2883,10 @@ StSecpGetStorageFolderStringSecurityDescriptor(
         {
             goto StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return;
         }
+        
         totalOutputLength = totalOutputLength + parameterLength;
     }
+    
     outputBuffer = ExAllocatePool2(0x100, totalOutputLength, POOL_TAG_STsp);
     if (outputBuffer == NULL)
     {
@@ -2901,12 +2901,12 @@ StSecpGetStorageFolderStringSecurityDescriptor(
 
             if (halfOutputLength - 1 < 0x7fffffff)
             {
-                stringLength = 0x7ffffffe - halfOutputLength;
+                securityDescriptorStrLength = 0x7ffffffe - halfOutputLength;
                 currentChar = outputBuffer;
 
                 do
                 {
-                    if ((stringLength + halfOutputLength == 0) ||
+                    if ((securityDescriptorStrLength + halfOutputLength == 0) ||
                         (WVar1 = *(WCHAR*)(((longlong)securityDescriptor - (longlong)outputBuffer) + (longlong)
                                 currentChar),
                             WVar1 == L'\0'))
@@ -2960,6 +2960,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
                 parameters
             );
         }
+        
         if (
             (-1 < return_status) &&
             (
@@ -2976,6 +2977,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
             outputBuffer = NULL;
         }
     }
+    
 StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return:
     if (parameterCount != 0)
     {
