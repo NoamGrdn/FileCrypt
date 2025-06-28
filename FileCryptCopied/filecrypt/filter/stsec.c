@@ -985,7 +985,7 @@ StSecpDeriveChamberProfileKey(
         goto StSecpDeriveChamberProfileKey_return_and_cleanup;
     }
 
-    pbMasterKeyHashObject = ExAllocatePool2(0x40, (ulonglong)g_cbHashObjectLength, POOL_TAG_StSn);
+    pbMasterKeyHashObject = ExAllocatePool2(0x40, g_cbHashObjectLength, POOL_TAG_StSn);
 
     if (pbMasterKeyHashObject != NULL)
     {
@@ -1019,21 +1019,17 @@ StSecpDeriveChamberProfileKey(
         }
 
         /* Hash the chamber ID to make the derivation chamber-specific.
-           The function uses the chamber ID as input to the HMAC function, ensuring that each chamber gets a
-           unique key derived from the master key */
-        return_status = BCryptHashData(
-            ChamberIdHashHandle,
-            (PUCHAR)pbChamberIdInput,
-            chamberIdLength,
-            0
-        );
+         * The function uses the chamber ID as input to the HMAC function, ensuring that each chamber gets a
+         * unique key derived from the master key
+         */
+        return_status = BCryptHashData(ChamberIdHashHandle, (PUCHAR)pbChamberIdInput, chamberIdLength, 0);
 
         if (return_status < 0)
         {
             goto StSecpDeriveChamberProfileKey_return_and_cleanup;
         }
 
-        pbHashObject = ExAllocatePool2(0x40, (ulonglong)g_cbHashObjectLength, POOL_TAG_StSn);
+        pbHashObject = ExAllocatePool2(0x40, g_cbHashObjectLength, POOL_TAG_StSn);
         if (pbHashObject != NULL)
         {
             /* Create a duplicate of the hash state for generating the second key */
@@ -1058,7 +1054,7 @@ StSecpDeriveChamberProfileKey(
                 goto StSecpDeriveChamberProfileKey_return_and_cleanup;
             }
 
-            firstHashOutput = ExAllocatePool2(0x40, (ulonglong)g_cbHashOutputLength, POOL_TAG_StSn);
+            firstHashOutput = ExAllocatePool2(0x40, g_cbHashOutputLength, POOL_TAG_StSn);
             if (firstHashOutput != NULL)
             {
                 /* Finalize first hash to get Install key */
@@ -1077,32 +1073,34 @@ StSecpDeriveChamberProfileKey(
                     goto StSecpDeriveChamberProfileKey_return_and_cleanup;
                 }
 
-                secondHashOutput = ExAllocatePool2(0x40, (ulonglong)g_cbHashOutputLength, POOL_TAG_StSn);
+                secondHashOutput = ExAllocatePool2(0x40, g_cbHashOutputLength, POOL_TAG_StSn);
                 if (secondHashOutput != NULL)
                 {
                     /* Finalize second hash to get Data key */
-                    return_status = BCryptFinishHash(
-                        dupChamberIdHashHandle,
-                        secondHashOutput,
-                        g_cbHashOutputLength,
-                        0
-                    );
+                    return_status = BCryptFinishHash(dupChamberIdHashHandle, secondHashOutput, g_cbHashOutputLength, 0);
+
+                    if (-1 > return_status)
+                    {
+                        goto StSecpDeriveChamberProfileKey_return_and_cleanup;
+                    }
 
                     /* Add both keys to the chamber key cache */
+                    return_status = StSecpAddChamberProfileKey(
+                        ChamberId,
+                        firstHashOutput,
+                        secondHashOutput,
+                        ProfileKeyLength
+                    );
+
+                    if (-1 > return_status)
+                    {
+                        goto StSecpDeriveChamberProfileKey_return_and_cleanup;
+                    }
+
                     /* Select the appropriate key based on chamber type */
-                    if ((
-                            (-1 < return_status) &&
-                            (return_status = StSecpAddChamberProfileKey(
-                                ChamberId,
-                                firstHashOutput,
-                                secondHashOutput,
-                                ProfileKeyLength
-                            ), -1 < return_status)
-                        ) &&
-                        (
-                            (relevantFinalKey = firstHashOutput, ChamberType == 1 ||
-                                (relevantFinalKey = secondHashOutput, ChamberType == 2))
-                        )
+                    if (
+                        relevantFinalKey = firstHashOutput, ChamberType == 1 ||
+                        (relevantFinalKey = secondHashOutput, ChamberType == 2)
                     )
                     {
                         memcpy(OutputProfileKey, relevantFinalKey, ProfileKeyLength);
@@ -1114,7 +1112,7 @@ StSecpDeriveChamberProfileKey(
         }
     }
 
-    return_status = -STATUS_NO_MEMORY;
+    return_status = STATUS_NO_MEMORY;
 StSecpDeriveChamberProfileKey_return_and_cleanup:
     if (ChamberIdHashHandle != NULL)
     {
@@ -2746,7 +2744,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
     while (securityDescriptorStrLength != 0);
 
     temp = STATUS_INVALID_PARAMETER;
-    
+
     if (securityDescriptorStrLength != 0)
     {
         temp = halfOutputLength;
@@ -2796,7 +2794,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
         if (*parameterName.Buffer == L'<' &&
             parameterName.Buffer[(ulonglong)(parameterName.Length >> 1) - 1] == L'>')
         {
-            if ((sid.Buffer == NULL) || (parameterCount == 2))
+            if (sid.Buffer == NULL || parameterCount == 2)
             {
                 return_status = STATUS_UNSUCCESSFUL;
                 goto StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return;
@@ -2836,8 +2834,12 @@ StSecpGetStorageFolderStringSecurityDescriptor(
             {
                 temp = halfOutputLength;
             }
-            return_status = (NTSTATUS)temp;
-            if ((securityDescriptorStrLength == 0) || (lVar2 = (0x7fffffff - securityDescriptorStrLength) * 2, securityDescriptorStrLength == 0))
+
+            return_status = temp;
+            if (
+                securityDescriptorStrLength == 0 ||
+                (lVar2 = (0x7fffffff - securityDescriptorStrLength) * 2, securityDescriptorStrLength == 0)
+            )
             {
                 goto StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return;
             }
@@ -2874,7 +2876,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
         policyPath.MaximumLength = remainingPath.MaximumLength;
         policyPath.Buffer = remainingPath.Buffer;
     }
-    
+
     if (isDebugProfile != '\0')
     {
         return_status = RtlStringCbLengthW(policyElement->DebugValue, firstName, (size_t*)&parameterLength);
@@ -2883,10 +2885,10 @@ StSecpGetStorageFolderStringSecurityDescriptor(
         {
             goto StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return;
         }
-        
+
         totalOutputLength = totalOutputLength + parameterLength;
     }
-    
+
     outputBuffer = ExAllocatePool2(0x100, totalOutputLength, POOL_TAG_STsp);
     if (outputBuffer == NULL)
     {
@@ -2960,7 +2962,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
                 parameters
             );
         }
-        
+
         if (
             (-1 < return_status) &&
             (
@@ -2977,7 +2979,7 @@ StSecpGetStorageFolderStringSecurityDescriptor(
             outputBuffer = NULL;
         }
     }
-    
+
 StSecpGetStorageFolderStringSecurityDescriptor_cleanup_and_return:
     if (parameterCount != 0)
     {

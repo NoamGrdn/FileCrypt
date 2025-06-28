@@ -1073,6 +1073,7 @@ FCpObtainSecurityInfoCallout(
     {
         ExFreePoolWithTag(chamberId, POOL_TAG_STsp);
     }
+    
     if (status < 0)
     {
         if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
@@ -1097,6 +1098,7 @@ FCpObtainSecurityInfoCallout(
         assignedChamberId = L"{0b7992da-c5e6-41e3-b24f-55419b997a15}";
         goto FCpObtainSecurityInfoCallout_assign_chamberid_and_return;
     }
+    
     if ((gFCFlags & EncryptMediaFlagBit) == 0)
     {
         goto FCpObtainSecurityInfoCallout_return;
