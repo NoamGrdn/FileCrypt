@@ -520,7 +520,7 @@ NTSTATUS FCpAccessCheck(
     BOOLEAN isAllowed;
     PGENERIC_MAPPING genericMapping;
     uint createDisposition;
-    KPROCESSOR_MODE requestMode = Data->RequestorMode;
+    KPROCESSOR_MODE requestorMode = Data->RequestorMode;
     ACCESS_MASK desiredAccess;
     NTSTATUS return_status = STATUS_SUCCESS;
     NTSTATUS accessStatus = STATUS_SUCCESS;
@@ -533,46 +533,62 @@ NTSTATUS FCpAccessCheck(
 
     createOptions = (iopb->Parameters).Create.Options;
     iopbSecurityContext = (iopb->Parameters).Create.SecurityContext;
-    /* See the Create struct (IRP_MJ_CREATE) in FLT_PARAMETERS (flt.kernel.h) */
+    
+    /* See the Create struct (IRP_MJ_CREATE) in FLT_PARAMETERS (fltKernel.h) */
     createDisposition = createOptions >> 0x18;
     securityContextDesiredAccess = iopbSecurityContext->DesiredAccess;
-    /* Initially set desiredAccess to include FILE_READ_ATTRIBUTES (0x10000) */
-    desiredAccess = securityContextDesiredAccess | 0x10000;
+    
+    //desiredAccess = securityContextDesiredAccess | 0x10000;
+    desiredAccess = securityContextDesiredAccess | DELETE;
 
-    /* If bit 12 of createOptions is not set (NOT FILE_DIRECTORY_FILE):
-     * Use the original desired access without modification */
+    /* If bit 12 of createOptions is not set (Bit 12 is FILE_DELETE_ON_CLOSE)
+     * We are not deleting the file so there is no need for the DELETE access
+     */
     if ((createOptions >> 0xc & 1) == 0)
     {
         desiredAccess = securityContextDesiredAccess;
     }
+    
+    /* If the values of createDisposition are one of the following:
+     * FILE_OVERWRITE or FILE_OVERWRITE_IF or FILE_MAXIMUM_DISPOSITION
+     */
     if (createDisposition - 4 < 2)
     {
-        /* If disposition is 4 (FILE_OVERWRITE) or 5 (FILE_OVERWRITE_IF):
-           Add STANDARD_RIGHTS_WRITE | FILE_WRITE_DATA (0x112) */
-        desiredAccess = desiredAccess | 0x112;
+        /* Add FILE_WRITE_ATTRIBUTES and FILE_WRITE_EA and FILE_WRITE_DATA
+         * to the desired access
+         */
+        //desiredAccess = desiredAccess | 0x112;
+        desiredAccess = desiredAccess | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA | FILE_WRITE_DATA;
     }
+    /* If the values of createDisposition are one of the following:
+     * FILE_OPEN_IF or FILE_CREATE
+     */
     else if (createDisposition - 2 < 2)
     {
-        /* If disposition is 2 (FILE_CREATE) or 3 (FILE_OPEN_IF):
-           Add FILE_WRITE_DATA (0x2) or FILE_APPEND_DATA (0x4) depending on the least significant bit */
+        /* If the first bit of createOptions is set, the file is a directory (FILE_DIRECTORY_FILE)
+         * In this case, [(createOptions & 1) * 2 + 2] will resolve to 4 which means
+         * desiredAccess | 4 => turns on FILE_APPEND_DATA
+         *
+         * Otherwise, desiredAccess | 2 => turns on FILE_WRITE_DATA
+         */
         desiredAccess = desiredAccess | (createOptions & 1) * 2 + 2;
     }
     else
     {
-        /* If disposition is 0 (FILE_SUPERSEDE):
-           Add FILE_READ_ATTRIBUTES (0x10000) */
+        /* If disposition is 0 (FILE_SUPERSEDE) we must have a DELETE access */
         if (createDisposition == 0)
         {
-            desiredAccess = desiredAccess | 0x10000;
+            desiredAccess = desiredAccess | DELETE;
         }
     }
-    /* If bit 0 of IrpFlags is set (SL_FORCE_ACCESS_CHECK):
-       Force the access mode to KernelMode (1) */
-    if ((*(byte*)&iopb->IrpFlags & 1) != 0)
+    
+    /* If bit 0 of IrpFlags is set (IRP_NOCACHE) force the access mode to be UserMode (1) */
+    if ((iopb->IrpFlags & 1) != 0)
     {
-        requestMode = '\x01';
+        requestorMode = '\x01';
     }
-    /* If BypassAccessChecks is off do access check */
+    
+    /* If BypassAccessChecks is off, do access check */
     if ((gFCFlags & BypassAccessChecksFlagBit) == 0)
     {
         accessState = iopbSecurityContext->AccessState;
@@ -586,7 +602,7 @@ NTSTATUS FCpAccessCheck(
             accessState->PreviouslyGrantedAccess,
             NULL,
             genericMapping,
-            requestMode,
+            requestorMode,
             &grantedAccess,
             &accessStatus
         );
