@@ -533,11 +533,11 @@ NTSTATUS FCpAccessCheck(
 
     createOptions = (iopb->Parameters).Create.Options;
     iopbSecurityContext = (iopb->Parameters).Create.SecurityContext;
-    
+
     /* See the Create struct (IRP_MJ_CREATE) in FLT_PARAMETERS (fltKernel.h) */
     createDisposition = createOptions >> 0x18;
     securityContextDesiredAccess = iopbSecurityContext->DesiredAccess;
-    
+
     //desiredAccess = securityContextDesiredAccess | 0x10000;
     desiredAccess = securityContextDesiredAccess | DELETE;
 
@@ -548,7 +548,7 @@ NTSTATUS FCpAccessCheck(
     {
         desiredAccess = securityContextDesiredAccess;
     }
-    
+
     /* If the values of createDisposition are one of the following:
      * FILE_OVERWRITE or FILE_OVERWRITE_IF or FILE_MAXIMUM_DISPOSITION
      */
@@ -581,13 +581,13 @@ NTSTATUS FCpAccessCheck(
             desiredAccess = desiredAccess | DELETE;
         }
     }
-    
+
     /* If bit 0 of IrpFlags is set (IRP_NOCACHE) force the access mode to be UserMode (1) */
     if ((iopb->IrpFlags & 1) != 0)
     {
         requestorMode = '\x01';
     }
-    
+
     /* If BypassAccessChecks is off, do access check */
     if ((gFCFlags & BypassAccessChecksFlagBit) == 0)
     {
@@ -853,6 +853,7 @@ FCpEncStreamStart(
                 event = ChamberId;
             }
         }
+        
         if (return_status < 0)
         {
             if ((Microsoft_Windows_FileCryptEnableBits & 1) == 0)
@@ -1089,7 +1090,7 @@ FCpObtainSecurityInfoCallout(
     {
         ExFreePoolWithTag(chamberId, POOL_TAG_STsp);
     }
-    
+
     if (status < 0)
     {
         if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
@@ -1114,7 +1115,7 @@ FCpObtainSecurityInfoCallout(
         assignedChamberId = L"{0b7992da-c5e6-41e3-b24f-55419b997a15}";
         goto FCpObtainSecurityInfoCallout_assign_chamberid_and_return;
     }
-    
+
     if ((gFCFlags & EncryptMediaFlagBit) == 0)
     {
         goto FCpObtainSecurityInfoCallout_return;
@@ -1182,9 +1183,9 @@ FCPostCreate(
     ioStatus = (Data->IoStatus).Status;
 
     /* If error has occurred, or the operation is a reparse operation, don't do anything and return some error */
-    if ((ioStatus < 0) || (ioStatus == STATUS_REPARSE))
+    if (ioStatus < 0 || ioStatus == STATUS_REPARSE)
     {
-        if ((ioStatus == STATUS_OBJECT_NAME_NOT_FOUND) && (isAccessModified != '\0'))
+        if (ioStatus == STATUS_OBJECT_NAME_NOT_FOUND && isAccessModified != '\0')
         {
             (Data->IoStatus).Status = STATUS_ACCESS_DENIED;
         }
@@ -1194,7 +1195,7 @@ FCPostCreate(
     }
     else
     {
-        if ((Flags & 1) == FLTFL_POST_OPERATION_DRAINING)
+        if ((Flags & FLTFL_POST_OPERATION_DRAINING) == 0)
         {
             status = FltGetStreamContext(FltObjects->Instance, FltObjects->FileObject, (PFLT_CONTEXT*)streamContext);
 
@@ -1230,7 +1231,7 @@ FCPostCreate(
 
                             if (-1 < status)
                             {
-                                /* Reset KeyData and ChamberType */
+                                /* Initialize KeyData and ChamberType */
                                 streamContext->KeyData.BcryptKeyHandle = NULL;
                                 streamContext->KeyData.KeyObject = NULL;
                                 streamContext->KeyData.KeyObjectSize = 0;
@@ -1294,7 +1295,7 @@ FCPostCreate(
     {
         FCpFreeChamberId(chamberId);
     }
-    if ((!error) && (status < 0))
+    if (!error && status < 0)
     {
         instance = FltObjects->Instance;
         FltCancelFileOpen(instance, FltObjects->FileObject);
@@ -1478,8 +1479,8 @@ FCPreCreate(
     BOOLEAN isMobile;
     BOOLEAN result;
     NTSTATUS kernelStackStatus;
-    ULONG fileCreateOptionsHighByte;
-    ULONG newCreateOptions;
+    ULONG fileCreateDisposition;
+    ULONG newCreateDisposition;
     PFLT_FILE_NAME_INFORMATION fileNameInfoForLog;
     PEVENT_DESCRIPTOR eventParam1;
     PWCHAR chamberId = NULL;
@@ -1790,37 +1791,40 @@ FCPreCreate(
                                 eventParam3 = (PVOID)(ulonglong)(fileCreateOptions & 0xffffff);
 
                                 fileCreateOptions = (Data->Iopb->Parameters).Create.Options;
-                                fileCreateOptionsHighByte = fileCreateOptions >> 0x18;
-                                callbackData = fileCreateOptionsHighByte;
+                                fileCreateDisposition = fileCreateOptions >> 0x18;
+                                callbackData = fileCreateDisposition;
 
-                                /* Check if we can adjust the operation to make it succeed */
-                                if ((fileCreateOptionsHighByte - 3 & 0xfffffffd) != 0)
+                                /* Checks if the create disposition is not FILE_OPEN_IF or FILE_OVERWRITE_IF */
+                                if ((fileCreateDisposition - 3 & 0xfffffffd) != 0)
                                 {
-                                    if ((fileCreateOptionsHighByte == 2) && ((fileCreateOptions & 1) != 0))
+                                    /* Checks if we are creating a file that is not a directory file */
+                                    if (
+                                        fileCreateDisposition == FILE_CREATE &&
+                                        (fileCreateOptions & FILE_DIRECTORY_FILE) != 0
+                                    )
                                     {
-                                        /* Object Name already exists */
                                         chamberData.Status = STATUS_OBJECT_NAME_COLLISION;
                                         goto FCPreCreate_return_no_post_op;
                                     }
                                     goto FCPreCreate_access_not_modified_2;
                                 }
 
-                                newCreateOptions = FILE_OVERWRITE;
+                                newCreateDisposition = FILE_OVERWRITE;
 
-                                if (fileCreateOptionsHighByte != 5)
+                                if (fileCreateDisposition != FILE_OVERWRITE_IF)
                                 {
-                                    newCreateOptions = FILE_OPEN;
-                                }
+                                    newCreateDisposition = FILE_OPEN;
+                                }   
 
-                                /* Setting the high 8 bits which contain the CreateOptions flags
-                                   See fltKernel.h _FLT_PARAMETERS */
+                                /* Rebuild the create options:
+                                 * Keep the original create/open flags and change the disposition */
                                 (Data->Iopb->Parameters).Create.Options =
-                                    newCreateOptions << 0x18 | fileCreateOptions & 0xffffff;
+                                    newCreateDisposition << 0x18 | fileCreateOptions & 0xffffff;
 
                                 eventParam3 = &accessMask;
                                 eventParam1 = securityDescriptor;
 
-                                /* Try access check again with modified options */
+                                /* Try access check again with modified disposition */
                                 chamberData.Status = FCpAccessCheck(Data, securityDescriptor, &accessMask);
 
                                 if (chamberData.Status != 0)
@@ -1830,13 +1834,14 @@ FCPreCreate(
 
                                 isAccessModified = '\x01';
                                 /* Mark the data as modified
-                                   
-                                   This section (above) did the following:
-                                   1. Perform an access check using the security descriptor
-                                   2. If access is denied, it tries to modify the operation (changing create disposition) to make it
-                                   succeed
-                                   3. If the modified operation is allowed, it marks the callback data as modified
-                                   4. Otherwise, it denies the operation */
+                                 * 
+                                 * This section (above) did the following:
+                                 * 1. Perform an access check using the security descriptor
+                                 * 2. If access is denied, it tries to modify the operation (changing create disposition) to make it
+                                 * succeed
+                                 * 3. If the modified operation is allowed, it marks the callback data as modified
+                                 * 4. Otherwise, it denies the operation
+                                 */
                                 FltSetCallbackDataDirty(Data);
                             }
                             else
@@ -1864,10 +1869,12 @@ FCPreCreate(
                             if (chamberData.ChamberType - 1 < 2)
                             {
                                 eventParam3 = ((Data->Iopb->Parameters).Create.SecurityContext)->AccessState;
+                                
                                 (((Data->Iopb->Parameters).Create.SecurityContext)->AccessState->Flags) =
                                     (((Data->Iopb->Parameters).Create.SecurityContext)->AccessState->Flags) |
                                     SPECIAL_ENCRYPTED_OPEN;
                             }
+                            
                             if (chamberId != NULL)
                             {
                                 /* Free chamber ID and return without completion context */
@@ -1930,10 +1937,12 @@ FCPreCreate_cleanup:
     {
         FltReleaseContext(volumeContext);
     }
+    
     if (fileNameInfo != NULL)
     {
         FltReleaseFileNameInformation(fileNameInfo);
     }
+    
     if (isChamberPathSet)
     {
         ExFreePoolWithTag(chamberPath.Buffer, POOL_TAG_FCnf);
@@ -1941,11 +1950,13 @@ FCPreCreate_cleanup:
         chamberPath.Length = 0;
         chamberPath.MaximumLength = 0;
     }
+    
     eventParam1 = securityDescriptor;
     if (securityDescriptor != NULL)
     {
         ExFreePoolWithTag(securityDescriptor, POOL_TAG_STsp);
     }
+    
     if (chamberData.Status < 0)
     {
         if (chamberId != NULL)
@@ -2303,7 +2314,7 @@ FCPreWrite(
     {
         setter = NULL;
         generalPtr = ciphertext;
-        
+
         /* When the driver intercepts a write operation, it needs to replace the original plaintext data
          * with encrypted data. The original data might be described by an MDL (if present) or direct
          * buffer. By creating a new MDL for the encrypted buffer, the driver can redirect the I/O operation
@@ -2350,7 +2361,7 @@ FCPreWrite(
                 generalPtr = (NPAGED_LOOKASIDE_LIST*)CallbackData;
                 /* Mark callback data as modified */
                 FltSetCallbackDataDirty(CallbackData);
-                /*  Set up completion context */ 
+                /*  Set up completion context */
                 lookasideEntry->Ciphertext = ciphertext;
                 lookasideEntry->AllocationType = allocationType;
                 lookasideEntry->VolumeContext = volumeContext;

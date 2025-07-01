@@ -1555,8 +1555,9 @@ StSecpGetChamberProfileKey(
         {
             if (ChamberType != 2)
             {
-                return 0;
+                return STATUS_SUCCESS;
             }
+            
             keySource = cacheEntry->DataKey;
         }
         memcpy(OutChamberProfileKey, keySource, KeySize);
