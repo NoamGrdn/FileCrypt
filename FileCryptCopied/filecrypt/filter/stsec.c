@@ -956,8 +956,8 @@ StSecpDeriveChamberProfileKey(
     NTSTATUS return_status;
     PUCHAR pbMasterKeyHashObject;
     PUCHAR pbHashObject = NULL;
-    PUCHAR firstHashOutput;
-    PUCHAR secondHashOutput;
+    PUCHAR installKey;
+    PUCHAR dataKey;
     BCRYPT_HASH_HANDLE* phMasterKeyHash;
     PUCHAR pUVar1 = NULL;
     PUCHAR pUVar2 = NULL;
@@ -967,7 +967,7 @@ StSecpDeriveChamberProfileKey(
     BCRYPT_HASH_HANDLE dupChamberIdHashHandle;
     PUCHAR masterKey = NULL;
     longlong chamberIdLength = 0;
-    PUCHAR relevantFinalKey = NULL;
+    PUCHAR chosenOutputKey = NULL;
 
 
     /* Check if the desired key length exceeds the hash output length. */
@@ -975,9 +975,10 @@ StSecpDeriveChamberProfileKey(
     {
         return STATUS_INVALID_PARAMETER;
     }
+    
     return_status = StSecpGetMasterKey(&masterKey, &masterKeySize);
-    firstHashOutput = pbHashObject;
-    secondHashOutput = pbHashObject;
+    installKey = pbHashObject;
+    dataKey = pbHashObject;
     pbMasterKeyHashObject = pbHashObject;
 
     if (return_status < 0)
@@ -991,7 +992,7 @@ StSecpDeriveChamberProfileKey(
     {
         phMasterKeyHash = &ChamberIdHashHandle;
         /* This key derivation is based on HMAC (Hash-based Message Authentication Code), which is a
-           standard approach for deriving keys. The master key serves as the HMAC key. */
+         * standard approach for deriving keys. The master key serves as the HMAC key. */
         return_status = BCryptCreateHash(
             g_HmacHashProvider,
             phMasterKeyHash,
@@ -1001,9 +1002,9 @@ StSecpDeriveChamberProfileKey(
             masterKeySize,
             0
         );
-        firstHashOutput = pUVar1;
-        secondHashOutput = pUVar2;
-        pbHashObject = relevantFinalKey;
+        installKey = pUVar1;
+        dataKey = pUVar2;
+        pbHashObject = chosenOutputKey;
 
         if (return_status < 0)
         {
@@ -1054,11 +1055,11 @@ StSecpDeriveChamberProfileKey(
                 goto StSecpDeriveChamberProfileKey_return_and_cleanup;
             }
 
-            firstHashOutput = ExAllocatePool2(0x40, g_cbHashOutputLength, POOL_TAG_StSn);
-            if (firstHashOutput != NULL)
+            installKey = ExAllocatePool2(0x40, g_cbHashOutputLength, POOL_TAG_StSn);
+            if (installKey != NULL)
             {
                 /* Finalize first hash to get Install key */
-                return_status = BCryptFinishHash(ChamberIdHashHandle, firstHashOutput, g_cbHashOutputLength, 0);
+                return_status = BCryptFinishHash(ChamberIdHashHandle, installKey, g_cbHashOutputLength, 0);
 
                 if (return_status < 0)
                 {
@@ -1073,11 +1074,11 @@ StSecpDeriveChamberProfileKey(
                     goto StSecpDeriveChamberProfileKey_return_and_cleanup;
                 }
 
-                secondHashOutput = ExAllocatePool2(0x40, g_cbHashOutputLength, POOL_TAG_StSn);
-                if (secondHashOutput != NULL)
+                dataKey = ExAllocatePool2(0x40, g_cbHashOutputLength, POOL_TAG_StSn);
+                if (dataKey != NULL)
                 {
                     /* Finalize second hash to get Data key */
-                    return_status = BCryptFinishHash(dupChamberIdHashHandle, secondHashOutput, g_cbHashOutputLength, 0);
+                    return_status = BCryptFinishHash(dupChamberIdHashHandle, dataKey, g_cbHashOutputLength, 0);
 
                     if (-1 > return_status)
                     {
@@ -1087,8 +1088,8 @@ StSecpDeriveChamberProfileKey(
                     /* Add both keys to the chamber key cache */
                     return_status = StSecpAddChamberProfileKey(
                         ChamberId,
-                        firstHashOutput,
-                        secondHashOutput,
+                        installKey,
+                        dataKey,
                         ProfileKeyLength
                     );
 
@@ -1099,11 +1100,11 @@ StSecpDeriveChamberProfileKey(
 
                     /* Select the appropriate key based on chamber type */
                     if (
-                        relevantFinalKey = firstHashOutput, ChamberType == 1 ||
-                        (relevantFinalKey = secondHashOutput, ChamberType == 2)
+                        chosenOutputKey = installKey, ChamberType == 1 ||
+                        (chosenOutputKey = dataKey, ChamberType == 2)
                     )
                     {
-                        memcpy(OutputProfileKey, relevantFinalKey, ProfileKeyLength);
+                        memcpy(OutputProfileKey, chosenOutputKey, ProfileKeyLength);
                     }
 
                     goto StSecpDeriveChamberProfileKey_return_and_cleanup;
@@ -1130,13 +1131,13 @@ StSecpDeriveChamberProfileKey_return_and_cleanup:
     {
         StSecpFreeNonPaged(pbHashObject, g_cbHashObjectLength);
     }
-    if (firstHashOutput != NULL)
+    if (installKey != NULL)
     {
-        StSecpFreeNonPaged(firstHashOutput, g_cbHashOutputLength);
+        StSecpFreeNonPaged(installKey, g_cbHashOutputLength);
     }
-    if (secondHashOutput != NULL)
+    if (dataKey != NULL)
     {
-        StSecpFreeNonPaged(secondHashOutput, g_cbHashOutputLength);
+        StSecpFreeNonPaged(dataKey, g_cbHashOutputLength);
     }
 
     return return_status;
@@ -1903,6 +1904,7 @@ StSecpGetMasterKey(
             return STATUS_NO_MEMORY;
         }
 
+        /* Read sealed key from the registry */
         return_status = StSecpReadSealedKeyBlob((PUCHAR*)&sealedKeyBlob, &sealedKeyBlobSize);
         sealedKeyBuffer = sealedKeyBlob;
         if (return_status < 0)
@@ -1913,7 +1915,7 @@ StSecpGetMasterKey(
             /* We have failed to read sealed key - check if it's because the key doesn't exist */
             if (return_status == STATUS_OBJECT_NAME_NOT_FOUND)
             {
-                return_status = BCryptGenRandom(NULL, unsealedMasterKey, 0x80, 2);
+                return_status = BCryptGenRandom(NULL, unsealedMasterKey, 0x80, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
                 sealedKeyBuffer = sealedKeyBlob;
 
                 if (-1 < return_status)
@@ -1924,7 +1926,7 @@ StSecpGetMasterKey(
         }
         else
         {
-            /* Successfully read sealed key - now unseal it via TPM */
+            /* Successfully read sealed key - now unseal it with the TPM */
             return_status = StSecpUnsealKey(
                 (PUCHAR)sealedKeyBlob,
                 sealedKeyBlobSize,
@@ -1940,12 +1942,17 @@ StSecpGetMasterKey(
             StSecpGetMasterKey_store_masterkey:
                 // TODO LOCK();
                 isMasterKeyNull = g_MasterKey == NULL;
+                /*
+                 * This expression is actually a branchless conditional assignment:
+                 * If g_MasterKey is NULL, isMasterKeyNull becomes 1
+                 * The XOR operations effectively set g_MasterKey = unsealedMasterKey
+                 * If g_MasterKey is not NULL, it remains unchanged
+                 */
                 g_MasterKey = (PUCHAR)(
                     (ulonglong)g_MasterKey ^
                     (ulonglong)isMasterKeyNull *
                     ((ulonglong)g_MasterKey ^ (ulonglong)unsealedMasterKey)
                 );
-
                 unsealedKey = (PUCHAR*)-(ulonglong)((ulonglong)!isMasterKeyNull * (longlong)g_MasterKey != 0);
                 unsealedMasterKey = (PUCHAR)((ulonglong)unsealedMasterKey & (ulonglong)unsealedKey);
 
@@ -1958,7 +1965,8 @@ StSecpGetMasterKey(
     LAB_1c000dbf3:
         sealedKeyBuffer = sealedKeyBlob;
         keySizeInBytes = unsealedMasterKeySizeInBytes;
-        /* Key not yet persisted - need to save it */
+        
+        /* the global master key variable is not null but g_MasterKeyPersisted is 0, this is an error edge case*/
         if (g_MasterKeyPersisted == '\0')
         {
             /* Seal the key using TPM */
@@ -1969,6 +1977,10 @@ StSecpGetMasterKey(
                 &sealedKeyBlobSize
             );
 
+            /* Seems like the only positive outcome out of this "if (g_MasterKeyPersisted == 0)" scenario is if 
+             * StSecpSealKey returns a STATUS_BUFFER_TOO_SMALL error, because only then we can get to the
+             * g_MasterKeyPersisted = 1 assigment and proceed to a good return 
+             */
             if (sealKeyStatus == STATUS_BUFFER_TOO_SMALL)
             {
                 UnsealedKey = (PUCHAR)0x100;
@@ -1982,7 +1994,7 @@ StSecpGetMasterKey(
                 {
                     /* Seal the key with larger buffer */
                     return_status = StSecpSealKey(
-                        UnsealedKey,
+                        UnsealedKey, // variable ignored, the unsealed key is the global Master key varialbe
                         keySizeInBytes,
                         (PUCHAR)sealedKeyBuffer,
                         &sealedKeyBlobSize
@@ -1990,7 +2002,7 @@ StSecpGetMasterKey(
 
                     /* Write the sealed key to registry */
                     if (-1 < return_status)
-                    {
+                    {   
                         return_status = StSecpWriteSealedKeyBlob(sealedKeyBuffer, sealedKeyBlobSize);
                         if (-1 < return_status)
                         {
@@ -2012,17 +2024,21 @@ StSecpGetMasterKey(
             *OutMasterKey = g_MasterKey;
             *OutMasterKeySizeInBytes = keySizeInBytes;
         }
+        
         if (unsealedMasterKey == NULL)
         {
             goto StSecpGetMasterKey_cleanup_and_return;
         }
     }
+    
     StSecpFreeNonPaged(unsealedMasterKey, keySizeInBytes);
+    
 StSecpGetMasterKey_cleanup_and_return:
     if (sealedKeyBuffer != NULL)
     {
         StSecFree(sealedKeyBuffer);
     }
+    
     return return_status;
 }
 
@@ -3242,7 +3258,7 @@ StSecpPackageFamilyNameFromFullName(
 }
 
 
-/* This function reads an encrypted key blob from secure storage (the registry) and returns both the
+/* This function reads an encrypted key blob from the registry and returns both the
  * blob itself and its size to the caller */
 NTSTATUS
 StSecpReadSealedKeyBlob(
@@ -3325,18 +3341,20 @@ StSecpReadSealedKeyBlob_cleanup_and_return:
     }
 
     /* 1. Registry-Based Key Storage: The master key is stored in the registry rather than in a file or
-       TPM, suggesting a balance between security and accessibility.
-       2. Sealed Key Format: The key is stored in a "sealed" format.
-       3. Fixed Storage Location: The key is stored at a fixed registry path, making it easily
-       accessible to the driver but potentially to other privileged processes as well. */
+     * TPM, suggesting a balance between security and accessibility.
+     * 2. Sealed Key Format: The key is stored in a "sealed" format.
+     * 3. Fixed Storage Location: The key is stored at a fixed registry path, making it easily
+     * accessible to the driver but potentially to other privileged processes as well.
+     */
     return return_status;
 }
 
-/* This function takes a raw (unprotected) master key and transforms it into a sealed key blob that
- * can only be unsealed by the specific TPM that created it */
+/* This function transforms the master key into a sealed key blob that
+ * can only be unsealed by the specific TPM that created it
+ */
 NTSTATUS
 StSecpSealKey(
-    PUCHAR UnsealedKey,
+    PUCHAR _,
     ULONG UnsealedKeySize,
     PUCHAR OutSealedKey,
     PULONG OutsealedKeySize
@@ -3505,7 +3523,6 @@ NTSTATUS StSecpUnsealKey(
     PUCHAR OutUnsealedKey,
     PULONG OutUnsealedKeySize
 )
-
 {
     BOOLEAN skipSealKey;
     TBS_RESULT contextCreateResult;
@@ -3613,13 +3630,13 @@ NTSTATUS StSecpUnsealKey(
         if ((OutUnsealedKey != NULL) && (SealedKeyBlobSize <= *OutUnsealedKeySize))
         {
             /* Copy unsealed key to output buffer if size permits */
-            memcpy(OutUnsealedKey, &abCommand.uStack_248, (ulonglong)SealedKeyBlobSize);
+            memcpy(OutUnsealedKey, &abCommand.uStack_248, SealedKeyBlobSize);
         }
     }
     else if ((OutUnsealedKey != NULL) && (SealedKeyBlobSize <= *OutUnsealedKeySize))
     {
         /* skipSealKey == true then return the unsealed key */
-        memcpy(OutUnsealedKey, SealedKeyBlob, (ulonglong)SealedKeyBlobSize);
+        memcpy(OutUnsealedKey, SealedKeyBlob, SealedKeyBlobSize);
     }
     *OutUnsealedKeySize = SealedKeyBlobSize;
 StSecpUnsealKey_cleanup_and_return:

@@ -853,7 +853,7 @@ FCpEncStreamStart(
                 event = ChamberId;
             }
         }
-        
+
         if (return_status < 0)
         {
             if ((Microsoft_Windows_FileCryptEnableBits & 1) == 0)
@@ -1814,7 +1814,7 @@ FCPreCreate(
                                 if (fileCreateDisposition != FILE_OVERWRITE_IF)
                                 {
                                     newCreateDisposition = FILE_OPEN;
-                                }   
+                                }
 
                                 /* Rebuild the create options:
                                  * Keep the original create/open flags and change the disposition */
@@ -1869,12 +1869,12 @@ FCPreCreate(
                             if (chamberData.ChamberType - 1 < 2)
                             {
                                 eventParam3 = ((Data->Iopb->Parameters).Create.SecurityContext)->AccessState;
-                                
+
                                 (((Data->Iopb->Parameters).Create.SecurityContext)->AccessState->Flags) =
                                     (((Data->Iopb->Parameters).Create.SecurityContext)->AccessState->Flags) |
                                     SPECIAL_ENCRYPTED_OPEN;
                             }
-                            
+
                             if (chamberId != NULL)
                             {
                                 /* Free chamber ID and return without completion context */
@@ -1937,12 +1937,12 @@ FCPreCreate_cleanup:
     {
         FltReleaseContext(volumeContext);
     }
-    
+
     if (fileNameInfo != NULL)
     {
         FltReleaseFileNameInformation(fileNameInfo);
     }
-    
+
     if (isChamberPathSet)
     {
         ExFreePoolWithTag(chamberPath.Buffer, POOL_TAG_FCnf);
@@ -1950,13 +1950,13 @@ FCPreCreate_cleanup:
         chamberPath.Length = 0;
         chamberPath.MaximumLength = 0;
     }
-    
+
     eventParam1 = securityDescriptor;
     if (securityDescriptor != NULL)
     {
         ExFreePoolWithTag(securityDescriptor, POOL_TAG_STsp);
     }
-    
+
     if (chamberData.Status < 0)
     {
         if (chamberId != NULL)
@@ -2016,8 +2016,11 @@ FCPreRead(
      * minifilters should be skipped (FO_BYPASS_IO_ENABLED), or that the length is zero */
     if (
         status < 0 ||
-        (FltObjects->FileObject != NULL && (FltObjects->FileObject->Flags & FO_BYPASS_IO_ENABLED) != 0 || readLength ==
-            0)
+        (
+            FltObjects->FileObject != NULL &&
+            (FltObjects->FileObject->Flags & FO_BYPASS_IO_ENABLED) != 0 ||
+            readLength == 0
+        )
     )
     {
         return_status = FLT_PREOP_SUCCESS_NO_CALLBACK;
