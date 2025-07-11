@@ -75,9 +75,11 @@ FCDecryptWorker(
 
     if (mdlAddress == NULL)
     {
+        // Check if the read buffer is NOT a system buffer, meaning it is a user buffer
         if ((callbackData->Flags & FLTFL_CALLBACK_DATA_SYSTEM_BUFFER) == 0)
         {
             event2 = callbackData;
+            // This function locks the user buffer, and if successfull it populated the MDL in PFLT_CALLBACK_DATA from the user buffer.
             status = FltLockUserBuffer(callbackData);
 
             if (status < 0)
@@ -89,25 +91,31 @@ FCDecryptWorker(
                 goto FCDecryptWorker_cleanup_and_return;
             }
 
+            // Taking the newly populated MDL and saving it to mdlAddress
             mdlAddress = (iopb->Parameters).Read.MdlAddress;
+            // Continuing like the MDL was not NULL from the start
             goto LAB_1c0002288;
         }
 
-        // TODO
         ppvVar4 = (iopb->Parameters).Read.MdlAddress;
     FCDecryptWorker_decrypt:
         mdlAddress = (PMDL)callbackData;
+        // Determine where to start zeroing the data in the buffer to prevent data leakage
         status = FltGetFsZeroingOffset(callbackData, &zeroingOffset);
         if (-1 < status)
         {
             sectorSize = completionContext->VolumeContext->SectorSize;
 
+            // Decrypting the buffer!
             status = FCpEncDecrypt(
                 &completionContext->VolumeContext->BcryptAlgHandle,
                 &completionContext->StreamContext->KeyData,
                 ppvVar4,
                 ppvVar4,
-                // TODO
+                // *(int*)&(callbackData->IoStatus).Information: is the read size
+                // + -1 + sectorSize: is to push the read size to the next sector boundary 
+                // & -sectorSize: is to round down
+                // In summary: Round Information up to next sector boundary
                 *(int*)&(callbackData->IoStatus).Information + -1 + sectorSize & -sectorSize,
                 (iopb->Parameters).CreatePipe.Parameters,
                 zeroingOffset
@@ -126,10 +134,13 @@ FCDecryptWorker(
     else
     {
     LAB_1c0002288:
-        if ((*(byte*)((longlong)&((PFLT_CALLBACK_DATA)mdlAddress)->Thread + 2) & 5) == 0)
+        // Check if the MDL is NOT mapped to VA AND the MDL is NOT from a non paged pool.
+        // If MdlFlags & MDL_MAPPED_TO_SYSTEM_VA == 1: The MDL already mapped to a virtual address.
+        // If MdlFlags & MDL_SOURCE_IS_NONPAGED_POOL == 1: The MDL was created from a non paged pool, meaning it has a virtual address.
+        if (mdlAddress->MdlFlags & (MDL_MAPPED_TO_SYSTEM_VA | MDL_SOURCE_IS_NONPAGED_POOL) == 0)
         {
             event3 = (PVOID*)0x1;
-
+            // Calling MmMapLockedPagesSpecifyCache maps mdlAddress into a virtual address
             ppvVar4 = MmMapLockedPagesSpecifyCache(
                 mdlAddress,
                 '\0',
@@ -141,7 +152,7 @@ FCDecryptWorker(
         }
         else
         {
-            ppvVar4 = (((PFLT_CALLBACK_DATA)mdlAddress)->IoStatus).Pointer;
+            ppvVar4 = mdlAddress->MappedSystemVa;
         }
 
         if ((CUSTOM_FC_DECRYPT_PARAMS*)ppvVar4 != NULL)
