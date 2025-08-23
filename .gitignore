@@ -402,3 +402,4 @@ FodyWeavers.xsd
 
 
 UI/dist/*
+.idea/
