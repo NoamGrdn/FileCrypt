@@ -2391,7 +2391,7 @@ FCPreWrite(
         {
             /* Map MDL to get virtual address */
             setter = MmMapLockedPagesSpecifyCache(
-                (PMDLX)generalPtr,
+                generalPtr,
                 '\0',
                 MmCached,
                 NULL,

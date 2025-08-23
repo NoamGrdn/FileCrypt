@@ -103,7 +103,7 @@ typedef struct _CUSTOM_FC_CREATE_CONTEXT
 {
     /* Calculated ChamberId */
     PWCHAR ChamberId;
-    /* Calculated ChamerType */
+    /* Calculated Chamber type */
     ULONG ChamberType;
     /* Flag indicating if file access was modified during the pre-operation */
     BOOLEAN IsAccessModified;
