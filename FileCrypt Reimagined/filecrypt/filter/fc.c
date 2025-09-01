@@ -137,7 +137,7 @@ FCDecryptWorker(
         // Check if the MDL is NOT mapped to VA AND the MDL is NOT from a non paged pool.
         // If MdlFlags & MDL_MAPPED_TO_SYSTEM_VA == 1: The MDL already mapped to a virtual address.
         // If MdlFlags & MDL_SOURCE_IS_NONPAGED_POOL == 1: The MDL was created from a non paged pool, meaning it has a virtual address.
-        if (mdlAddress->MdlFlags & (MDL_MAPPED_TO_SYSTEM_VA | MDL_SOURCE_IS_NONPAGED_POOL) == 0)
+        if ((mdlAddress->MdlFlags & (MDL_MAPPED_TO_SYSTEM_VA | MDL_SOURCE_IS_NONPAGED_POOL)) == 0)
         {
             event3 = (PVOID*)0x1;
             // Calling MmMapLockedPagesSpecifyCache maps mdlAddress into a virtual address
@@ -2387,7 +2387,7 @@ FCPreWrite(
             goto FCPreWrite_set_allocation_failure_status;
         }
 
-        if (((PMDL)generalPtr)->MdlFlags & (MDL_MAPPED_TO_SYSTEM_VA | MDL_SOURCE_IS_NONPAGED_POOL) == 0)
+        if ((((PMDL)generalPtr)->MdlFlags & (MDL_MAPPED_TO_SYSTEM_VA | MDL_SOURCE_IS_NONPAGED_POOL)) == 0)
         {
             /* Map MDL to get virtual address */
             setter = MmMapLockedPagesSpecifyCache(
