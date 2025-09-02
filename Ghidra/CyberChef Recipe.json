@@ -1,0 +1,12 @@
+[
+  { "op": "Find / Replace",
+    "args": [{ "option": "Regex", "string": "#pragma[^\\n]+\\n" }, "", true, false, false, false] },
+  { "op": "Find / Replace",
+    "args": [{ "option": "Regex", "string": "(?:__forceinline|__inline)((?:[^{]*\\n[^{]*))\\{(?:\\{[^{}]*\\}|[^{}])*\\}" }, "$1;", true, false, true, false] },
+  { "op": "Find / Replace",
+    "args": [{ "option": "Regex", "string": "__declspec\\([^\\)]+\\)+" }, "", true, false, true, false] },
+  { "op": "Find / Replace",
+    "args": [{ "option": "Simple string", "string": "typedef char __C_ASSERT__[(0x0000000000000800UI64 < 0x1000)?1:-1];" }, "", true, false, true, false] },
+  { "op": "Find / Replace",
+    "args": [{ "option": "Simple string", "string": "typedef enum _FLT_CALLBACK_DATA_QUEUE_FLAGS FLT_CALLBACK_DATA_QUEUE_FLAGS;" }, "typedef ULONG FLT_CALLBACK_DATA_QUEUE_FLAGS;", true, false, true, false] }
+]
