@@ -419,9 +419,6 @@ For more information about these flags, refer to the Registries chapter.
 
 ### CUSTOM_FC_BCRYPT_DATA
 
-**Functions Used In:**
-- FCpEncVolumeStart
-
 ```c
 /* Holds AES-CBC encryption settings - 24 bytes in length */
 typedef struct _CUSTOM_FC_BCRYPT_DATA
@@ -438,6 +435,10 @@ typedef struct _CUSTOM_FC_BCRYPT_DATA
     ULONG SecretKeySize;
 } CUSTOM_FC_BCRYPT_DATA, *PCUSTOM_FC_BCRYPT_DATA;
 ```
+
+**Usage:**
+
+`FCpEncVolumeStart`
 
 Initializes an instance of the struct by opening an AES algorithm provider, querying block and object lengths, and setting CBC chaining mode for volume-level encryption.
 
@@ -457,7 +458,7 @@ Performs decryption operations using the structure's BCrypt handle and sector si
 
 Embeds this structure in the volume context during filter attachment, calling FCpEncVolumeStart to initialize encryption capabilities for the entire volume.
 
-CUSTOM_FC_VOLUME_CONTEXT
+### CUSTOM_FC_VOLUME_CONTEXT
 ```c
 /* Volume-wide settings - 56 bytes in size */
 typedef struct _CUSTOM_FC_VOLUME_CONTEXT
@@ -475,7 +476,7 @@ typedef struct _CUSTOM_FC_VOLUME_CONTEXT
 } CUSTOM_FC_VOLUME_CONTEXT, *PCUSTOM_FC_VOLUME_CONTEXT;
 ```
 
-Functions Used In:
+**Usage:**
 
 `FCInstanceSetup`
 
@@ -497,8 +498,8 @@ Gets the volume context to access sector size for encryption buffer alignment ca
 
 Uses the volume context from the completion context to access SectorSize and BcryptAlgHandle to perform the actual decryption work in both synchronous and asynchronous scenarios.
 
+### CUSTOM_FC_BCRYPT_KEY_DATA
 ```c
-CUSTOM_FC_BCRYPT_KEY_DATA
 typedef struct _CUSTOM_FC_BCRYPT_KEY_DATA
 {
     /* Symmetric key, generated using a ChamberId */
@@ -510,7 +511,7 @@ typedef struct _CUSTOM_FC_BCRYPT_KEY_DATA
 } CUSTOM_FC_BCRYPT_KEY_DATA, *PCUSTOM_FC_BCRYPT_KEY_DATA;
 ```
 
-Functions Used In:
+**Usage:**
 
 `FCpEncStreamStart`
 
@@ -532,8 +533,9 @@ Uses the BCrypt key handle to decrypt file data in sector-aligned chunks during 
 
 Initializes this structure by calling FCpEncStreamStart with chamber information, embedding the resulting key data in the stream context for subsequent file operations.
 
+
+### CUSTOM_FC_STREAM_CONTEXT
 ```c
-CUSTOM_FC_STREAM_CONTEXT
 /* File-specific settings 40 bytes in size */
 typedef struct _CUSTOM_FC_STREAM_CONTEXT
 {
@@ -546,7 +548,7 @@ typedef struct _CUSTOM_FC_STREAM_CONTEXT
 } CUSTOM_FC_STREAM_CONTEXT, *PCUSTOM_FC_STREAM_CONTEXT;
 ```
 
-Functions Used In:
+**Usage:**
 
 `FCPostCreate`
 
@@ -564,9 +566,9 @@ Retrieves the stream context to determine if the file is encrypted; if no contex
 
 Gets the stream context to access the file's encryption key data for encrypting write operations, storing the context reference for post-operation cleanup.
 
+### CUSTOM_FC_CREATE_CONTEXT
 ```c
-CUSTOM_FC_CREATE_CONTEXT
-c/* Information passed from FCPreCreate to FCPostCreate - 13 bytes in size*/
+/* Information passed from FCPreCreate to FCPostCreate - 13 bytes in size*/
 typedef struct _CUSTOM_FC_CREATE_CONTEXT
 {
     /* Calculated ChamberId */
@@ -578,7 +580,7 @@ typedef struct _CUSTOM_FC_CREATE_CONTEXT
 } CUSTOM_FC_CREATE_CONTEXT, *PCUSTOM_FC_CREATE_CONTEXT;
 ```
 
-Functions Used In:
+**Usage:**
 
 `FCPreCreate`
 
@@ -588,8 +590,8 @@ Creates the completion context by analyzing the file path to determine the chamb
 
 Consumes the completion context to extract chamber information, transfers ownership of the chamber ID to stream context, and uses the chamber type for encryption setup, handling error cases by modifying access status appropriately.
 
+### CUSTOM_FC_DECRYPT_PARAMS
 ```c
-CUSTOM_FC_DECRYPT_PARAMS
 /* Used in FCPostRead as parameters for the FCDecryptWorker function - 16 bytes in size */
 typedef struct _CUSTOM_FC_DECRYPT_PARAMS
 {
@@ -600,7 +602,7 @@ typedef struct _CUSTOM_FC_DECRYPT_PARAMS
 } CUSTOM_FC_DECRYPT_PARAMS, *PCUSTOM_FC_DECRYPT_PARAMS;
 ```
 
-Functions Used In:
+**Usage:**
 
 `FCPostRead`
 
@@ -610,8 +612,8 @@ Creates a parameters structure when immediate decryption is not possible due to 
 
 Receives parameters for both synchronous and asynchronous decryption operations, extracts I/O information and context data, performs buffer mapping and decryption operations, and handles completion and cleanup responsibilities.
 
+### CUSTOM_FC_READ_CONTEXT
 ```c
-CUSTOM_FC_READ_CONTEXT
 typedef struct _CUSTOM_FC_READ_CONTEXT
 {
     /* Volume encryption settings */
@@ -621,7 +623,7 @@ typedef struct _CUSTOM_FC_READ_CONTEXT
 } CUSTOM_FC_READ_CONTEXT, *PCUSTOM_FC_READ_CONTEXT;
 ```
 
-Functions Used In:
+**Usage:**
 
 `FCPreRead`
 
@@ -635,8 +637,8 @@ Consumes completion context to determine decryption strategy, either performing 
 
 Receives the completion context containing volume and stream contexts, extracts encryption parameters and key data, performs actual decryption operations, and releases all context references upon completion.
 
+### CUSTOM_FC_WRITE_CONTEXT
 ```c
-CUSTOM_FC_WRITE_CONTEXT
 /* Information passed from FCPreWrite to FCPostWrite - 25 bytes in size*/
 typedef struct _CUSTOM_FC_WRITE_CONTEXT
 {
@@ -652,7 +654,7 @@ typedef struct _CUSTOM_FC_WRITE_CONTEXT
 } CUSTOM_FC_WRITE_CONTEXT, *PCUSTOM_FC_WRITE_CONTEXT;
 ```
 
-Functions Used In:
+**Usage:**
 
 `FCPreWrite`
 
@@ -662,8 +664,8 @@ Creates a completion context and manages encryption by allocating a ciphertext b
 
 Cleanup function that releases volume and stream context references, frees the ciphertext buffer back to the appropriate memory pool based on allocation type, and frees the completion context lookaside list entry.
 
+### CUSTOM_FC_STSEC_CACHE_TABLE_ENTRY
 ```c
-CUSTOM_FC_STSEC_CACHE_TABLE_ENTRY
 /* Cache of derived profile keys. Used to avoid expensive re-derivation - 36 bytes in size*/
 typedef struct _CUSTOM_FC_STSEC_CACHE_TABLE_ENTRY
 {
@@ -680,7 +682,7 @@ typedef struct _CUSTOM_FC_STSEC_CACHE_TABLE_ENTRY
 } CUSTOM_FC_STSEC_CACHE_TABLE_ENTRY, *PCUSTOM_FC_STSEC_CACHE_TABLE_ENTRY;
 ```
 
-Functions Used In:
+**Usage:**
 
 `StSecpAddChamberProfileKey`
 
@@ -698,8 +700,8 @@ Background cleanup worker that removes expired cache entries by enumerating the 
 
 Creates new cache entries when requested keys are not found by deriving both install and data keys through HMAC operations and calling StSecpAddChamberProfileKey to populate the cache.
 
+### CUSTOM_FC_CHAMBER_DATA
 ```c
-CUSTOM_FC_CHAMBER_DATA
 /* Used in FCpObtainSecurityInfoCallout to obtain the
  * ChamberId and Type of the current file/directory that is being opened - 
  * 36 bytes in size*/
@@ -718,7 +720,7 @@ typedef struct CUSTOM_FC_CHAMBER_DATA
 } CUSTOM_FC_CHAMBER_DATA, *PCUSTOM_FC_CHAMBER_DATA;
 ```
 
-Functions Used In:
+**Usage:**
 
 `FCpObtainSecurityInfoCallout`
 
@@ -728,8 +730,8 @@ Processes the path to determine the chamber and security info
 
 Uses to determine encryption policy for file operations
 
+### CUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY
 ```c
-CUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY
 /* Cache entry for security descriptor policies loaded from registry - 48 bytes in size */
 typedef struct _CUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY
 {
@@ -747,7 +749,7 @@ typedef struct _CUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY
 *PCUSTOM_FC_STSEC_SEC_DESC_CACHE_LIST_ENTRY;
 ```
 
-Functions Used In:
+**Usage:**
 
 `StSecpInitializePolicyCache`
 
@@ -765,8 +767,8 @@ Searches the cache for path matches
 
 Cleanup function that traverses and frees all entries
 
+### CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY
 ```c
-CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY
 /* Cache entry for folder properties that determine chamber assignments */
 typedef struct _CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY
 {
@@ -783,7 +785,7 @@ typedef struct _CUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY
 *PCUSTOM_FC_STSEC_FOLDER_PROP_CACHE_LIST_ENTRY;
 ```
 
-Functions Used In:
+**Usage:**
 
 `StSecpInitializePolicyCache`
 
