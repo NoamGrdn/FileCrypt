@@ -10,7 +10,8 @@ layout: default
   {{ content }}
 
   {%- if site.posts.size > 0 -%}
-    <h2 class="post-list-heading">{{ page.list_title | default: "Blog Parts" }}</h2>
+    <h1>Total reverse engineering and rebuild of an obscure encryption minifilter driver</h1>
+    <h2>{{ page.list_title | default: "Blog Parts" }}</h2>
     <ul class="post-list">
       {%- for post in site.posts -%}
       <li>
