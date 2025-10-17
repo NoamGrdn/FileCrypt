@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Part 2 - Instance Setup"
-date:   2025-10-17 15:40:05 +0300
+date:   2025-10-17 15:40:06 +0300
 categories: jekyll update
 ---
 

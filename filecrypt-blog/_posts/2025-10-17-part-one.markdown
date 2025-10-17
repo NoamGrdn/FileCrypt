@@ -1,8 +1,10 @@
 ---
 layout: post
 title:  "Part 1 - Preface and DriverEntry"
-date:   2025-10-17 15:40:06 +0300
+date:   2025-10-17 15:40:07 +0300
 categories: jekyll update
+author: Ron Gladish, Noam Gordon, Eran Yeruhamie
+tags: [reverse-engineering, windows, drivers, security, encryption, filecrypt, encryption-driver, minifilter, minifilter-drivers, encryption-drivers, tpm]
 ---
 
 # Preface
@@ -86,9 +88,7 @@ OSVERSIONINFOW lpVersionInfo;
 memset(&lpVersionInfo.dwMajorVersion, 0, 0x110);
 lpVersionInfo.dwOSVersionInfoSize = 0x114;
 
-
 osVersionStatus = RtlGetVersion(&lpVersionInfo);
-
 
 if (-1 < osVersionStatus &&
    (
@@ -157,9 +157,7 @@ BOOLEAN FsRtlIsMobileOS(VOID)
    NTSTATUS status;
    PVOID ptr = NULL;
 
-
    status = TmCurrentTransaction(&ptr);
-
 
    return status == STATUS_NOT_SUPPORTED;
 }
