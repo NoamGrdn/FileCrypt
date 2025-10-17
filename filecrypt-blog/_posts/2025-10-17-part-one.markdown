@@ -1,0 +1,207 @@
+---
+layout: post
+title:  "Part 1 - Preface and DriverEntry"
+date:   2025-10-17 15:40:06 +0300
+categories: jekyll update
+---
+
+# Preface
+#### Story time (If uninterseted, skip straight to [DriverEntry](#driverentry))
+
+As part of the final year of our B.Sc. in Computer Science at the College of Management Academic Studies, we had to choose a _“specialization”_ - a program in which students get to choose more practice-oriented courses and do work that is a bit closer to the real tech industry.
+
+The three of us, seeking a challenge and learn and experience new things that we don’t get to do in our jobs (each one at their own), chose Cyber Security out of the available options as our specialization.
+In addition to the courses of each specialization, all students take a year-long ‘Final Project’ course, in which they are divided into groups and tasked with doing a project in the field of their specialty for the entire final year.
+
+This, together with the facts that:
+The three of us wanted to do a sort of research and/or development at a lower software level, whether it involved some kind of exploitation or reverse engineering. Fast forward to the day of the _Project Ideas Presentation_, our then-idea, which involved video game exploitation, was fairly brutally rejected (and rightfully so - there wasn’t anything unique about it, and it added very little value). We were left without the slightest idea of what to do, and now we are almost behind schedule for submission. At the end of a very long brainstorming weekend, one of us, while going through literally every single official Microsoft driver on his personal Windows machine, encountered a driver named FileCrypt. After a googling (and a bit of AI prompting) session, only very basic and generic metadata information, alongside users troubleshooting BSOD issues, was available online. No official Microsoft documentation, no explicit mentions in articles, in-fact, zero information. But it looked liked something we might be interested in:
+1. The driver was only 94 KB in size, not very big, and suitable for reverse engineering in the time we have.
+2. From its file description, which reads: “Windows sandboxing and encryption filter”, the driver had something to do with encryption - very fitting for our project requirement.
+
+We discussed the matter among the three of us, while tossing the sys file into Ghidra, to get a very basic assessment of the magnitude of the situation - we came up with a new project idea: Reverse engineer this driver to the fullest extent to figure out what it does and why it exists. 
+We couldn’t set our goal to be “exploitation of the driver” for two main reasons: First, there is no guarantee that there are vulnerabilities in this driver; and more importantly, the project must have a concrete end goal that can be achieved within the timeframe of the academic year. Plus, the fact that we have no experience in reverse engineering and absolutely none 
+
+in exploitation at even normal user-mode applications, we wanted to avoid goals like those entirely.
+After formulating the idea, we contacted our supervisor, Dr. Gal Badishi. He generously (and quite unexpectedly to us), agreed to have a video call with us on the weekend. This gave us a chance to bounce back with a fresh idea and make the schedule on the assignment.
+
+At the call, Dr. Badishi said he had liked our idea given the following circumstances:
+- We had no prior reverse engineering experience 
+- The driver has absolutely no public documentation or information about it online
+- The “product” of the project is an open-source work that can potentially benefit the wider security community
+
+With those considerations, he gave us a green light.
+
+Now, after what we are sure is an extremely interesting story for everyone, and without further delay, let’s get into the technical details.
+
+When we found the driver and honed in on our idea, we started reading driver documentation and articles on the official [Microsoft documentation website][kernel-mode-driver-architecture-design-guide]. We did this to gain a better understanding of what we would see inside the driver’s code, and because at one point, we wanted to write a driver ourselves to get a glimpse of how the development process for such a thing works. We very quickly realized that we need to understand what we are to focus on because, to absolutely no one's surprise, the documentation is massive.
+
+Before going into the driver’s decompiled code, we played around with Visual Studio’s driver template projects, specifically “Kernel Mode Driver (KMDF)” to get to know the basic data types we are going to be working with, jumping around different header files, getting a general idea of how source code for Windows drivers look and trying to relate it all to the documentation we were reading at the same time.
+
+Then, we set up [Ghidra][Ghidra] with the driver’s basic PDB files, which, fortunately, were made public by Microsoft. So now, into the code!
+Not quite. We are a team of three, and we must be able to work in parallel. With regular git, it would have been very simple: create a branch, commit to it, and merge. Unfortunately, Ghidra does not integrate well with git because it creates files that are difficult to merge and practically unusable with a git environment. However, the NSA has devised a solution. Ghidra comes with a runnable service called _Ghidra Server_, which allows multiple people working on the same reversing project to synchronize their work. Unlike git, Ghidra Server does not have an equivalent to GitHub, so we had to host our own instance of Ghidra Server.
+
+Now, let us begin with the driver’s code: We began examining the driver’s decompiled code, starting with the `DriverEntry`.
+At this point, we wanted to see how what we have read in the docs, combined with what we see in the driver template project, compares with the decompiled code. 
+Because this is not a _device_ driver, at first glance, we did not find what we were looking for; however, we did encounter filter-driver functions, such as `FltRegisterFilter`, `FltStartFiltering`, and `FltUnregisterFilter`. We then knew that what we were looking at, was a [minifilter driver][about-file-system-filter-drivers]. That sent us back to the docs to read more about filter drivers - what they are, how they operate, and how they interact with the rest of the operating system. While reading Microsoft’s documentation, we came across a [GitHub repository][windows-driver-samples] that contains a variety of example drivers, including a comprehensive set of minifilter drivers. [This driver][scanner-driver], named _Scanner_, caught our attention in particular because, judging from its description, it performs a task roughly in the same area as what our driver does.
+This repo turned out to be very useful for referencing Windows API calls and how they look in actual source code.
+
+Back to Ghidra, we wanted to start renaming and retyping the most obvious variables and function parameters, starting, for example, with the arguments of the DriverEntry. 
+
+# DriverEntry
+
+```c
+void DriverEntry(
+   ushort* param_1,
+   ushort* param_2
+)
+```
+
+Very quickly, we encountered our first issue: our Ghidra is missing the header files from the [Windows Driver Development Kit][windows-driver-development-kit]. Luckily, we found this article, in which the author lays out the solution to what seemed to be a plug and play feature in Ghidra - it wasn’t.
+
+After going through it step by step, we realized we were quite fortunate because [this article][ghidra -data-types] was published just two months before this point. 
+The author made use of CyberChef - we had to expand his "recipe" just a bit, the last link should open the app with our recipe already loaded. We also have it in our GitHub.
+
+After going through it step by step, we realized we were quite fortunate because this article was published just two months before this point. 
+The author made use of [CyberChef][cyber-chef] - we had to expand his _recipe_ just a bit, the last link should open the app with our recipe already loaded. We also have it in our [GitHub][cyber-chef-recipe].
+
+```c
+DriverEntry(
+   PDRIVER_OBJECT PDriverObject,
+   PUNICODE_STRING PRegistryPath
+)
+```
+
+And voilà! Throughout the project, we had to regenerate our header files several times to include additional headers, as we encountered rarer code that utilized very specific modules.
+
+_Note - from now on, the code in the snippets we will be showing is from a recreation project of the driver’s code, which converts the decompiled Ghidra code into real buildable C code. More on in the last part of the article._
+
+Now, back to the `DriverEntry`. The first thing it does, is change global values for memory management based on the Windows version the driver is running on:
+
+[`DriverEntry` - _View code on GitHub_][driver-entry-code]
+
+```c
+NTSTATUS osVersionStatus;
+OSVERSIONINFOW lpVersionInfo;
+...
+memset(&lpVersionInfo.dwMajorVersion, 0, 0x110);
+lpVersionInfo.dwOSVersionInfoSize = 0x114;
+
+
+osVersionStatus = RtlGetVersion(&lpVersionInfo);
+
+
+if (-1 < osVersionStatus &&
+   (
+     6 < lpVersionInfo.dwMajorVersion ||
+     lpVersionInfo.dwMajorVersion == 6 && 1 < lpVersionInfo.dwMinorVersion
+   )
+)
+{  
+   ExDefaultNonPagedPoolType = NonPagedPoolNx;
+   ExDefaultMdlProtection = MdlMappingNoExecute;
+}
+```
+
+The versioning scheme that is in use in the code can be found [here][osversioninfoexw]. Essentially, this code checks if the version of Windows is higher than Windows 7. This check would include all of the following Windows versions:
+
+| `Windows 11` | `10.0` |
+| :---- | :---- |
+| `Windows Server 2022` | `10.0` |
+| `Windows Server 2019` | `10.0` |
+| `Windows 10` | `10.0` |
+| `Windows Server 2016` | `10.0` |
+| `Windows Server 2012 R2` | `6.3` |
+| `Windows 8.1` | `6.3` |
+| `Windows 8` | `6.2` |
+| `Windows Server 2012`	 | `6.2` |
+
+_Seems like someone has been forgetting to update this number in the last 10 years._
+
+If we are using a later version of Windows, the driver enables two memory protections: it marks memory pages as non-executable and makes MDL (Memory Descriptor List) mappings default to non-executable. This is presumably because this feature is not supported in earlier versions of Windows.
+
+Next, the driver registers its event provider for event tracing by calling EtwRegister.
+The driver then reads from its provided registry path the following keys:
+`DebugTraceLevel`, `EncryptMedia`, `EncryptAll`, `BypassAccessChecks`, `FilterEmulatedExternalDrive`. 
+For more information about these registry keys, their values, and all other registry paths the driver accesses, you can refer to our [technical documentation][tech-doc-flags]. The driver stores these values in-memory and will later make decisions regarding device attachment, access checks, and encryption, based on these flags. The driver will access many other registry paths throughout its operation.
+
+After initializing a couple of lookaside lists for operations that happen later on, the driver does something particularly interesting:
+
+[`DriverEntry`][driver-entry-code]
+
+```c
+isMobileOS = FsRtlIsMobileOS();
+if (isMobileOS == TRUE)
+{
+   FilterRegistration.OperationRegistration = CallbacksMobile;
+}
+```
+
+It registers different callbacks depending on the return value of `FsRtlIsMobileOS`. This is an undocumented function from ntoskrnl that is exported in `ntifs.h`. 
+On a “non-mobile” OS, the driver registers only Pre+Post Create (`IRP_MJ_CREATE`) callbacks. In contrast, on a “mobile” OS, the driver registers additional Pre+Post Read (`IRP_MJ_READ`) and Write (`IRP_MJ_WRITE`) callbacks.
+
+This single function has puzzled us for the majority of the project, not because of its complexity or inconsistency, but because of its implications for the overall purpose of this driver. A couple of notable observations:
+- From what we have gathered from unofficial sources and personal testing, this driver first appeared at around 2015 in Windows 10. 
+<span class="note">This makes the decision to check for earlier versions of Windows at the start of the DriverEntry very questionable.</span>
+- Windows on Mobile was discontinued in 2020.
+- The driver is included in Windows 11 (Released in October 2021) and received a non-insignificant update in version 24H2 (Released in October 2024).
+- The code of `FsRtlIsMobileOS`, which we will show in a moment, does not explicitly check for anything that we were able to link directly to the Windows Mobile OS.
+Why does an error control ”critical” and non-stopable driver, that is shipped with the latest version of Windows, care about a dead technology at such a high level?
+
+The code of `FsRtlIsMobileOS`, as seen in a decompiled ntoskrnl.exe,  did not provide profound insight (to us at least):
+
+<span class="note">Recreation of FsRtlIsMobileOS</span>
+
+```c
+BOOLEAN FsRtlIsMobileOS(VOID)
+{
+   NTSTATUS status;
+   PVOID ptr = NULL;
+
+
+   status = TmCurrentTransaction(&ptr);
+
+
+   return status == STATUS_NOT_SUPPORTED;
+}
+```
+
+`TmCurrentTransaction` is not a publicly exported routine, but it is presumably part of the [Windows Transaction Manager][tmxxx]. We haven’t been able to go deeper than `ntoskrnl.exe` and into `TmCurrentTransaction` because it led to what appeared to be an API stub DLL.
+
+![TmCurrentTransaction Assembly view]({{ '/assets/images/tm-current-transaction.png' | relative_url }})
+
+Consulting both the _Windows Internals 7th edition_ and the official documentation, we were unable to confirm that the KTM (Kernel Transaction Manager) is not included in the Windows Phone OS. Most API documentation pages of KTM routines list Windows Vista as a minimum requirement for their usage, without explicit mention of any Windows Phone versions. At one point in the research, we theorized that this function might be related to Windows on ARM. Mainly when considering that the new Surface Snapdragon notebooks with the latest Windows Recall features may require enhanced security and encryption. This theory was based on pure speculation, and we have no evidence to support it. We have no reason to believe that the Windows KTM is unavailable on ARM, In fact, it sounds silly. We did not debug Windows ARM VMs, but upon examining different registries, they did not appear to differ from our Intel-based personal computers and VMs.
+
+Ultimately, we came to terms with the fact that this function likely does what it claims: checking if we are running on a Mobile OS, specifically and most likely, a Windows Phone.
+
+Upon a successful call to `FltRegisterFilter`, the driver then calls the [`StSecInitialize`][stsecinitialize] function. In it, it initializes, among other things:
+- Global hashing objects using functions from bcrypt.h, including a SHA256 algorithm provider
+- 3 global objects that cache both operations and data from the registry
+  - [`g_StSecCacheGenericTable`][custom_fc_stsec_cache_table_entry] for storing Chamber keys
+  - Two static lists: [`g_StSecSecurityDescriptorCacheList`][custom_fc_stsec_sec_desc_cache_list_entry], and [`g_StSecFolderPropertyCacheList`][custom_fc_stsec_folder_prop_cache_list_entry], that are initialized once with data from the registry. The first is for storing Windows security descriptors, and the second is for storing chamber properties about specific paths.
+
+After initializing numerous global variables and performing a series of registry reads, the driver notifies the _Filter Manager_ by calling `FltStartFiltering` that it is ready to begin attaching to volumes and filtering I/O requests.
+
+Before exploring the callbacks, we must first review the Instance Setup Callback - `FCInstanceSetup`. This function determines whether the driver would like to attach an instance of itself to a given volume.
+
+[→ Continue to Part 2][part-two-link]
+
+---
+
+[kernel-mode-driver-architecture-design-guide]: https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/
+[ghidra]: https://github.com/NationalSecurityAgency/ghidra
+[about-file-system-filter-drivers]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/about-file-system-filter-drivers
+[windows-driver-samples]: https://github.com/microsoft/Windows-driver-samples/
+[scanner-driver]: https://github.com/microsoft/Windows-driver-samples/tree/main/filesys/miniFilter/scanner
+[windows-driver-development-kit]: https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk
+[ghidra -data-types]: https://medium.com/@clearbluejar/everyday-ghidra-ghidra-data-types-creating-custom-gdts-from-windows-headers-part-2-39b8121e1d82
+[cyber-chef]: https://gchq.github.io/CyberChef/#recipe=Find_/_Replace(%7B'option':'Regex','string':'%23pragma%5B%5E%5C%5Cn%5D%2B%5C%5Cn'%7D,'',true,false,false,false)Find_/_Replace(%7B'option':'Regex','string':'(?:__forceinline%7C__inline)((?:%5B%5E%7B%5D*%5C%5Cn%5B%5E%7B%5D*))%5C%5C%7B(?:%5C%5C%7B%5B%5E%7B%7D%5D*%5C%5C%7D%7C%5B%5E%7B%7D%5D)*%5C%5C%7D'%7D,'$1;',true,false,true,false)Find_/_Replace(%7B'option':'Regex','string':'__declspec%5C%5C(%5B%5E%5C%5C)%5D%2B%5C%5C)%2B'%7D,'',true,false,true,false)Find_/_Replace(%7B'option':'Simple%20string','string':'typedef%20char%20__C_ASSERT__%5B(0x0000000000000800UI64%20%3C%200x1000)?1:-1%5D;'%7D,'',true,false,true,false)Find_/_Replace(%7B'option':'Simple%20string','string':'typedef%20enum%20_FLT_CALLBACK_DATA_QUEUE_FLAGS%20FLT_CALLBACK_DATA_QUEUE_FLAGS;'%7D,'typedef%20ULONG%20FLT_CALLBACK_DATA_QUEUE_FLAGS;',true,false,true,false)
+[cyber-chef-recipe]: https://github.com/NoamGrdn/FileCrypt/blob/master/Ghidra/CyberChef%20Recipe.json
+[driver-entry-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L2711
+[osversioninfoexw]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_osversioninfoexw
+[tech-doc-flags]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#7-flags-1
+[tmxxx]: https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/using-tmxxx-routines
+[stsecinitialize]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/stsec.c#L364
+[custom_fc_stsec_cache_table_entry]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#custom_fc_stsec_cache_table_entry
+[custom_fc_stsec_sec_desc_cache_list_entry]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#custom_fc_stsec_sec_desc_cache_list_entry
+[custom_fc_stsec_folder_prop_cache_list_entry]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#custom_fc_stsec_folder_prop_cache_list_entry
+[part-two-link]: {% post_url 2025-10-17-part-two %}

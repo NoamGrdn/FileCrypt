@@ -11,7 +11,16 @@ layout: default
 
   {%- if site.posts.size > 0 -%}
     <h1>Total reverse engineering and rebuild of an obscure encryption minifilter driver</h1>
-    <h2>{{ page.list_title | default: "Blog Parts" }}</h2>
+    <hr>
+    <br/>
+
+    <h2 >
+      <a href="https://github.com/NoamGrdn/FileCrypt/tree/master" style="display: flex; align-items: center; gap: 6px">
+        <svg class="svg-icon"><use xlink:href="{{ '/assets/minima-social-icons.svg#github' | relative_url }}"></use></svg>
+        Project Repository
+      </a>
+    </h2>
+    <h2>{{ page.list_title | default: "Blog Parts:" }}</h2>
     <ul class="post-list">
       {%- for post in site.posts -%}
       <li>

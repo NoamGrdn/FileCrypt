@@ -1,0 +1,253 @@
+---
+layout: post
+title:  "Part 2 - Instance Setup"
+date:   2025-10-17 15:40:05 +0300
+categories: jekyll update
+---
+
+# FCInstanceSetup
+
+When a minifilter driver registers itself by calling `FltRegisterFilter` from its `DriverEntry` routine, it can register a routine of type `PFLT_INSTANCE_SETUP_CALLBACK` as the minifilter driver's `InstanceSetupCallback` routine.
+The filter manager calls this routine on the first operation after a new volume is mounted.
+
+The instance setup callback typically does a couple of things: First, we usually see volume inspection that determines whether the driver’s  functionality is relevant to that particular volume.
+Second, the callback can allocate and initialize instance-specific contexts data that will be maintained throughout the lifetime of the attachment. Both of those points are relaevnt in our case.
+
+In the instance setup, the first thing the driver does is check the volume device and system file types that it received from the instance setup callback:
+
+[`FCInstanceSetup`][fc-instance-setup-code]
+```c
+/* Only attach to file systems */
+if (VolumeDeviceType != FILE_DEVICE_DISK_FILE_SYSTEM)
+{
+   goto FCInstanceSetup_cleanup_and_return;
+}
+
+
+/* Only attach to the following filesystems: RAW, NTFS, FAT, and EXFAT */
+if (1 < VolumeFilesystemType + ~FLT_FSTYPE_RAW && 
+        VolumeFilesystemType != FLT_FSTYPE_EXFAT)
+{
+   goto FCInstanceSetup_cleanup_and_return;
+}
+```
+
+The driver only supports the following file systems: RAW, NTFS, FAT, and exFAT. Next, the driver checks for a particular device characteristic:
+
+[`FCInstanceSetup`][fc-instance-setup-code]
+```c
+doesVolumeNotSupportRemovableMedia = 
+(volumeProperties->DeviceCharacteristics & FILE_REMOVABLE_MEDIA) == 0;
+```
+
+This is best explained by David Zeuthen in [this blog][removable-blog-post]:
+
+> [...] "removable" means that the media of the device is removable. For example, CD-ROM drives or Nin1 card readers for flash media. Typically the _disk_ itself tells you this via e.g. the IDENTIFY inquiry (a command sent from the host to the microcontroller on the _disk_ itself). ATA disks connected via eSATA aren't removable, you can't remove the platters. So they report themselves with removable==0 and we should not try to fix this up.
+
+It then checks if one of the flags that it read in DriverEntry earlier is on, and if so, it checks if the label of the volume is equal to “`SDCARD`”
+
+[`FCInstanceSetup`][fc-instance-setup-code]
+
+```c
+if ((gFCFlags & FilterEmulatedExternalDriveFlagBit) != 0)
+{
+/* Check if the VolumeLabelLength is six wchars in length 
+ * (12/13 byte longs).
+ * If it is, then compare the VolumeLabel with the string "SDCARD" */
+   if ((fsVolumeInfo->VolumeLabelLength & 0xfffffffe) == 12)
+   {
+       compResult = _wcsnicmp(
+           fsVolumeInfo->VolumeLabel,
+           L"SDCARD",
+           fsVolumeInfo->VolumeLabelLength >> 1
+       );
+       isVolumeSdCard = compResult == 0;
+   }
+}
+```
+
+These operations culminate in the following code segment, in which the driver chcks once again, which type of OS it is running on:
+
+[`FCInstanceSetup`][fc-instance-setup-code]
+```c
+isMobileOS = FsRtlIsMobileOS();
+if (isMobileOS == FALSE)
+{
+   status = FCpRetrieveAppPairingId(FltObjects);
+   if (status < 0)
+   {
+   FCInstanceSetup_sd_card_check:
+       if (!isVolumeSdCard)
+       {
+           goto FCInstanceSetup_cleanup_and_return;
+       }
+   }
+}
+else if (doesVolumeNotSupportRemovableMedia)
+{
+   goto FCInstanceSetup_sd_card_check;
+}
+```
+
+`FCpRetrieveAppPairingId` checks whether a specific file named “`WPAppSettings.dat`” exists in the protected “`System Volume Information`” folder on the device.
+On mobile, It continues the attachment process only on SD cards.
+For non-mobile devices, it continues the attachment process if the special file exists or if the device is an SD card. The non-mobile environment has an extra check that may allow it to continue the attachment.
+
+The check for `WPAppSettings.dat` being unique to non-mobile Windows systems seemed very arbitrary to us, so we decided to dig deeper. Firstly, what does this file even contain? As usual in this project, googling or prompting an LLM did not yield any practical information. When searching for it on our personal machines’ drives and our VMs, we could not find it in any driver; however, we did find a similarly named file called “`WPSettings.dat`”. This looked like a promising lead, so we decided to investigate this file further. What we found were mostly forum posts complaining about Windows automatically generating this file in every file system that gets connected to the machine. Along with these, there were several different claims about which Windows mechanism generates this file; the most credible claim was that a service called StorSvc was responsible for it. So now all we have to do is hope that WPSettings and WPAppSettings are related and that reversing the `StorSvc` service might shed some light on this matter.
+
+`StorSvc` is actually a DLL file used by an instance of `SvcHost.exe`. Many of the Windows services are implemented as different DLL files hosted by an instance of `SvcHost`.
+Now, all we have to do is a bit of reversing and look for any references to `WPAppSettings` or `WPSettings`. What we found was a huge service that we did not have the capacity to fully understand. However, we did find one thing that was very interesting - a function called `PairStorageCardForApps`. The name of this function is too similar to `FCpRetrieveAppPairingID` to be a coincidence. When looking further into this function, we found two interesting things:
+- This function creates a `WPAppSettings.dat` file.
+- This allows Filecrypt to attach to a volume using the FilterAttach function.
+
+![StorSvc Assembly view]({{ '/assets/images/storsvc-app-pairing-id.png' | relative_url }})
+
+But what logic leads to this? Inside the code, we found a vital clue:
+In the function call stack leading to the code above, StorSvc creates a folder named `WindowsApps`. A simple Google search revealed that this folder contains applications installed from the Microsoft Store. In the Windows settings, you can change the default installation folder for applications from the Microsoft Store. However, when we configure our installation location to be the `C` volume, the WpAppSettings file is not created. Why?
+Through trial and error, we discovered that when we **set a flash drive as the default Microsoft Store installation folder, `WpAppSettings.dat` is created**. More detailed information about this requires us to dig deeper into StorSvc, but with our time being constrained, we decided to focus our attention on our driver. For now, we are satisfied knowing that on non-mobile systems, we can attach a FileCrypt instance to a volume by connecting a flash drive and setting it as the default installation location for Windows applications.
+
+Now, back to `FCInstanceSetup`, we left off on the following code block that searched for the app pairing Id:
+
+[`FCInstanceSetup`][fc-instance-setup-code]
+
+```c
+isMobileOS = FsRtlIsMobileOS();
+if (isMobileOS == FALSE)
+{
+   status = FCpRetrieveAppPairingId(FltObjects);
+   if (status < 0)
+   {
+   FCInstanceSetup_sd_card_check:
+       if (!isVolumeSdCard)
+       {
+           goto FCInstanceSetup_cleanup_and_return;
+       }
+   }
+}
+else if (doesVolumeNotSupportRemovableMedia)
+{
+   goto FCInstanceSetup_sd_card_check;
+}
+
+```
+
+If one of the above conditions is true and the driver decides to continue, it initializes a volume context for the instance (refer to the technical documentation - [`CUSTOM_FC_VOLUME_CONTEXT`][custom_fc_volume_context]). In the volume context, the driver holds
+- A BCrypt algorithm handle (`BCRYPT_ALG_HANDLE`) 
+- The volume’s sector size
+- A flag indicating whether encryption is enabled for it
+- Another flag that affects security checks later on
+- Extra metadata about the volume.
+The encryption variables of the context are initialized inside `FCpEncVolumeStart`, and after that, the volume context is set on the volume using `FltSetVolumeContext`.  
+
+[`FCInstanceSetup`][fc-instance-setup-code]
+
+```c
+volumeContext->BcryptAlgHandle.BcryptAlgHandle = NULL;
+volumeContext->BcryptAlgHandle.ObjectLength = 0;
+volumeContext->BcryptAlgHandle.EncryptionSectorSize = volumeContext->SectorSize;
+volumeContext->BcryptAlgHandle.SecretKeySize = 0x10;
+volumeContext->EncryptionEnabled = 1;
+encryptVolumeStartStatus = FCpEncVolumeStart(&volumeContext->BcryptAlgHandle);
+
+...
+
+FltSetVolumeContext(
+   FltObjects->Volume,
+   FLT_SET_CONTEXT_KEEP_IF_EXISTS,
+   volumeContext,
+   NULL
+);
+
+```
+
+We then have another call to `FsRtlIsMobileOS` <span class="note">(Why not reuse the same value from before?)</span>. 
+
+[`FCInstanceSetup`][fc-instance-setup-code]
+
+```c
+vqb = diskDeviceObject->Vpb;
+isMobileOS = FsRtlIsMobileOS();
+if (
+   isMobileOS == FALSE &&
+   (vqb->DeviceObject->Flags & DO_SUPPORTS_PERSISTENT_ACLS) != 0
+)
+{
+   volumeContext->VerificationNeeded = FALSE;
+}
+else
+{
+   volumeContext->VerificationNeeded = TRUE;
+   vqb_deviceObject = vqb->DeviceObject;
+   vqb_deviceObject->Flags = vqb_deviceObject->Flags | DO_SUPPORTS_PERSISTENT_ACLS;
+}
+```
+
+And in the `if-else` following it, the driver determines whether the volume requires security verification:
+- Non-mobile systems without persistent ACLs (Access control lists) support also require verification
+- Mobile systems always require verification
+The `DO_SUPPORTS_PERSISTENT_ACLS` flag is added to the device
+The `VerificationNeeded` flag will later be used in the pre-operation of the create callback.
+
+Next, if the volume does not support removable media but the `FilterEmulatedExternalDrive` flag is set, the driver forces <u>all device objects</u> in the driver stack to have the `FILE_REMOVABLE_MEDIA` characteristic:
+
+[`FCInstanceSetup`][fc-instance-setup-code]
+
+```c
+if (
+   (gFCFlags & FilterEmulatedExternalDriveFlagBit) != 0 &&
+   doesVolumeNotSupportRemovableMedia
+)
+{
+   highestDeviceObject = IoGetAttachedDeviceReference(diskDeviceObject);
+
+
+   while (highestDeviceObject != NULL)
+   {
+       highestDeviceObject->Characteristics =
+           highestDeviceObject->Characteristics | FILE_REMOVABLE_MEDIA;
+       lowerDeviceObject = IoGetLowerDeviceObject(highestDeviceObject);
+       ObfDereferenceObject(highestDeviceObject);
+       highestDeviceObject = lowerDeviceObject;
+   }
+}
+```
+
+And as a closing note in the instance setup, if the `BypassAccessChecks` flag is set, the driver strips the device object of the `FILE_DEVICE_SECURE_OPEN` characteristic:
+
+[`FCInstanceSetup`][fc-instance-setup-code]
+
+```c
+if ((gFCFlags & BypassAccessChecksFlagBit) != 0)
+{
+   diskDeviceObject->Characteristics = 
+   diskDeviceObject->Characteristics & ~FILE_DEVICE_SECURE_OPEN;
+}
+```
+
+### To summarize:
+
+- The driver only attaches to RAW, NTFS, FAT, and ExFAT disk file systems
+- On non-mobile systems, the driver attempts to retrieve an "App Pairing ID" first. If that fails, it only attaches to SD card volumes labeled "SDCARD"
+- On mobile systems, it only attaches to SD cards, not to internal storage
+- **The check for SD cards only happens if the `FilterEmulatedExternalDrive` flag is set**
+- Initializes the volume context of the driver (CUSTOM_FC_VOLUME_CONTEXT)
+  - `DeviceName`: DOS name of the volume (e.g., "`C:`")
+  - `SectorSize`: Disk sector size (defaults to 512 bytes, uses larger if available)
+  - `BcryptAlgHandle`: Encryption settings for AES volume-level encryption
+  - `EncryptionEnabled`: Boolean flag indicating if encryption is active
+  - `VerificationNeeded`: Boolean flag for security verification requirements
+- Calls `FCpEncVolumeStart` to initialize a BCrypt AES algorithm provider
+- On mobile or volumes without persistent ACLs support, the driver forces the  `DO_SUPPORTS_PERSISTENT_ACLS` flag
+- If the `FilterEmulatedExternalDrive` flag is set, the driver applies the `FILE_REMOVABLE_MEDIA` characteristic to the entire device stack
+- If the `BypassAccessChecks` flag is set, the driver removes the `FILE_DEVICE_SECURE_OPEN` characteristic from the volume
+
+In the next part, we will delve into the largest callback of the driver by far, and the only one registered on non-mobile systems: `IRP_MJ_CREATE` - `FCPreCreate` and `FCPostCreate`.
+
+[→ Continue to part 3][part-three-link]
+
+---
+
+[fc-instance-setup-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L247
+[removable-blog-post]: https://bugs.freedesktop.org/show_bug.cgi?id=22879#c3
+[custom_fc_volume_context]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#custom_fc_volume_context
+[part-three-link]: {% post_url 2025-10-17-part-three %}
