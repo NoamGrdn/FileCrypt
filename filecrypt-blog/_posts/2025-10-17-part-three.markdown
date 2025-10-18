@@ -1,8 +1,9 @@
 ---
 layout: post
 title:  "Part 3 - IRP_MJ_CREATE"
+author: Ron Gladish, Noam Gordon, Eran Yeruhamie
 date:   2025-10-17 15:40:08 +0300
-categories: jekyll update
+tags: [reverse-engineering, windows, drivers, security, encryption, filecrypt, encryption-driver, minifilter, minifilter-drivers, encryption-drivers, windows-security, FsRtlIsMobileOS, IRP_MJ_CREATE, pre-create, post-create, windows-security-descriptors, chambers, SID]
 ---
 
 [← Go back to part 2][part-two-link]

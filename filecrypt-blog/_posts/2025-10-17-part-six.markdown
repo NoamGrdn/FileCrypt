@@ -1,8 +1,9 @@
 ---
 layout: post
 title:  "Epilogue - Driver ReWrite, Ghidra Server and Windows Debugging"
+author: Ron Gladish, Noam Gordon, Eran Yeruhamie
 date:   2025-10-17 15:31:05 +0300
-categories: jekyll update
+tags: [reverse-engineering, windows, drivers, security, encryption, filecrypt, encryption-driver, minifilter, minifilter-drivers, encryption-drivers, windows-security, CONCAT88, ghidra, wiindows-debugging, vmware, ghidra-server]
 ---
 
 [← Go back to part 5][part-five-link]

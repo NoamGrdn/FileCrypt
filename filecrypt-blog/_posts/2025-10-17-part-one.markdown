@@ -1,10 +1,9 @@
 ---
 layout: post
 title:  "Part 1 - Preface and DriverEntry"
-date:   2025-10-17 15:40:10 +0300
-categories: jekyll update
 author: Ron Gladish, Noam Gordon, Eran Yeruhamie
-tags: [reverse-engineering, windows, drivers, security, encryption, filecrypt, encryption-driver, minifilter, minifilter-drivers, encryption-drivers, tpm]
+date:   2025-10-17 15:40:10 +0300
+tags: [reverse-engineering, windows, drivers, security, encryption, filecrypt, encryption-driver, minifilter, minifilter-drivers, encryption-drivers, driverentry, ghidra, cyberchef, windows-security, FsRtlIsMobileOS, ktm]
 ---
 
 # Preface

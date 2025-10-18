@@ -1,8 +1,9 @@
 ---
 layout: post
 title:  "Part 2 - Instance Setup"
+author: Ron Gladish, Noam Gordon, Eran Yeruhamie
 date:   2025-10-17 15:40:09 +0300
-categories: jekyll update
+tags: [reverse-engineering, windows, drivers, security, encryption, filecrypt, encryption-driver, minifilter, minifilter-drivers, encryption-drivers, windows-security, FsRtlIsMobileOS, ktm, PFLT_INSTANCE_SETUP_CALLBACK, driver-instance-setup, WPAppSettings, WPSettings]
 ---
 
 [← Go back to part 1][part-one-link]

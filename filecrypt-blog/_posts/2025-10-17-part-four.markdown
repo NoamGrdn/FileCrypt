@@ -1,8 +1,9 @@
 ---
 layout: post
 title:  "Part 4 - IRP_MJ_READ"
+author: Ron Gladish, Noam Gordon, Eran Yeruhamie
 date:   2025-10-17 15:31:07 +0300
-categories: jekyll update
+tags: [reverse-engineering, windows, drivers, security, encryption, filecrypt, encryption-driver, minifilter, minifilter-drivers, encryption-drivers, windows-security, FsRtlIsMobileOS, IRP_MJ_READ, pre-read, post-read, FltSetFsZeroingOffsetRequired, chambers]
 ---
 
 [← Go back to part 3][part-three-link]
@@ -11,7 +12,7 @@ categories: jekyll update
 
 [Go to the FCPostRead callback](#fcpostread)
 
-The read callbacks are where FileCrypt performs its decryption functionality, but only on mobile systems. Remember from earlier, on non-mobile systems, the driver only registers create callbacks. When applications read data from encrypted files on mobile devices, these functions transparently intercept and decrypt the data before it reaches the application.
+The read callbacks are where FileCrypt performs its **decryption** functionality, but only on mobile systems. Remember from earlier, on non-mobile systems, the driver only registers create callbacks. When applications read data from encrypted files on mobile devices, these functions transparently intercept and decrypt the data before it reaches the application.
 
 # FCPreRead
 
