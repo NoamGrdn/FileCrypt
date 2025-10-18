@@ -195,6 +195,8 @@ If neither the `MDL_MAPPED_TO_SYSTEM_VA` nor `MDL_SOURCE_IS_NONPAGED_POOL` flags
 Finally, `FCpEncDecrypt` is simply a wrapper function for the `BCryptDecrypt` function, which is part of the `bcrypt.h`. `FCpEncDecrypt`, which receives the volume's BCrypt algorithm handle and the stream's key data, calls `BCryptDecrypt` once per sector to decrypt each sector individually. The size of the buffer to decrypt is the sector size rounded up to the next sector.
 
 ---
+<br/>
+[→ Continue to part 5][part-five-link]
 
 
 [part-three-link]: {% post_url 2025-10-17-part-three %}
@@ -202,3 +204,4 @@ Finally, `FCpEncDecrypt` is simply a wrapper function for the `BCryptDecrypt` fu
 [custom_fc_read-context]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#custom_fc_read_context
 [fc-post-read-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L1325
 [fc-decrypt-worker-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L57
+[part-five-link]: {% post_url 2025-10-17-part-five %}

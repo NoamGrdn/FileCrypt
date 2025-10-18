@@ -1,0 +1,182 @@
+---
+layout: post
+title:  "Part 5 - IRP_MJ_WRITE"
+date:   2025-10-17 15:31:06 +0300
+categories: jekyll update
+---
+
+[← Go back to part 4][part-four-link]
+
+[Go to the FCPreWrite callback](#fcprewrite)
+
+[Go to the FCPostWrite callback](#fcpostwrite)
+
+The write callbacks are where FileCrypt performs its **encryption** functionality. When applications write data to encrypted files, these callbacks transparently intercept and encrypt the data before it reaches the disk. Just like the read callback, it is applicable only for mobile systems.
+
+# FcPreWrite
+
+The `IRP_MJ_WRITE` operation intercepts write operations before they reach the file system. The `FCPreWrite` function begins by retrieving the stream context to determine if the file requires encryption. If no stream context exists, the file isn't encrypted, and the driver returns `FLT_PREOP_SUCCESS_NO_CALLBACK`.
+
+[`FcPreWrite`][fc-pre-write-code]
+
+```c
+FLT_PREOP_CALLBACK_STATUS
+FCPreWrite(
+   PFLT_CALLBACK_DATA CallbackData,
+   PCFLT_RELATED_OBJECTS FltObjects,
+   PVOID* CompletionContext
+)
+{
+   NTSTATUS ioStatus;
+   PVOID setter;
+   PVOID generalPtr;
+   FLT_PREOP_CALLBACK_STATUS return_status = FLT_PREOP_SUCCESS_NO_CALLBACK;
+   PCUSTOM_FC_STREAM_CONTEXT streamContext = NULL;
+   ULONG writeLength = (ioqb->Parameters).Write.Length;
+   ...
+
+   setter = &streamContext;
+   generalPtr = FltObjects->Instance;
+   ioStatus = FltGetStreamContext(generalPtr, FltObjects->FileObject, setter);
+
+   if (
+       ioStatus < 0 ||
+       FltObjects->FileObject != NULL &&
+       (FltObjects->FileObject->Flags & FO_BYPASS_IO_ENABLED) != 0
+   )
+   {
+       return_status = FLT_PREOP_SUCCESS_NO_CALLBACK;
+       goto FCPreWrite_cleanup_and_return;
+   }
+
+   if (writeLength == 0)
+   {
+       goto FCPreWrite_cleanup_and_return;
+   }
+...
+```
+
+After confirming encryption is needed, the function retrieves the volume context to access its sector size and BCrypt algorithm information. This leads to an interesting memory allocation decision in the driver.
+
+The driver implements a two-tier allocation strategy based on write size. For writes smaller than 64 KB, it allocates buffers from a pre-initialized lookaside list (the `gShadowBufferList` global variable). For larger writes, it allocates directly from the nonpaged pool using the  `ExAllocatePool2` routine. The allocation type gets stored in a flag (`1` for lookaside list, `2` for pool) that will be passed to the post-operation.
+
+[`FcPreWrite`][fc-pre-write-code]
+
+```c
+totalSizeToEncrypt = (writeLength - 1) + volumeContext->SectorSize & -volumeContext->SectorSize;
+
+if (totalSizeToEncrypt < 0x10001)
+{
+   shadowBufferPtr = &gShadowBufferList;
+   ciphertext = ExAllocateFromNPagedLookasideList(&gShadowBufferList);
+   allocationType = '\x01';
+}
+else
+{
+   ciphertext = ExAllocatePool2(0x40, totalSizeToEncrypt, POOL_TAG_FCsb);
+   allocationType = '\x02';
+}
+```
+
+This alignment of the length is required for block-cipher encryption, as you cannot encrypt partial sectors. Hence, the calculation at the `totalSizeToEncrypt` assignment rounds up to the next sector boundary.
+
+Once a buffer for the ciphertext is allocated, `FCPreWrite` creates an MDL (Memory Descriptor List) to describe it and then performs the written buffer replacement. The function modifies the I/O request to point to the encrypted buffer instead of the original plaintext buffer:
+
+[`FcPreWrite`][fc-pre-write-code]
+
+```c
+mdl = IoAllocateMdl(ciphertext, totalSizeToEncrypt, 0, 0, 0);
+allocationTypeCopy = allocationType;
+
+if (mdl == NULL)
+{
+   goto FCPreWrite_set_allocation_failure_status;
+}
+
+MmBuildMdlForNonPagedPool(mdl);
+MmMdlPageContentsState(mdl, 1);
+generalPtr = (ioqb->Parameters).Others.Argument5;
+```
+
+The driver then encrypts the original write buffer plaintext and replaces the write buffer with the ciphertext:
+
+[`FcPreWrite`][fc-pre-write-code]
+
+```c
+   plaintext = (PUCHAR)(ioqb->Parameters).Write.MdlAddress;
+FCPreWrite_encrypt:
+   setter = plaintext;
+   ioStatus = FCpEncEncrypt(
+       &volumeContext->BcryptAlgHandle,
+       &streamContext->KeyData,
+       plaintext,
+       ciphertext,
+       totalSizeToEncrypt,
+       ioqb->Parameters.Write.WriteBuffer
+   );
+   generalPtr = &gPre2PostIoContextList;
+   lookasideEntry = ExAllocateFromNPagedLookasideList(&gPre2PostIoContextList);
+```
+
+The critical step comes next - replacing the original I/O parameters with the encrypted buffer:
+
+[`FcPreWrite`][fc-pre-write-code]
+
+```c
+   generalPtr = &gPre2PostIoContextList;
+   lookasideEntry = ExAllocateFromNPagedLookasideList(&gPre2PostIoContextList);
+
+   if (lookasideEntry != NULL)
+   {
+       (ioqb->Parameters).Write.MdlAddress = ciphertext;
+       (ioqb->Parameters).Others.Argument5 = mdl;
+       generalPtr = (NPAGED_LOOKASIDE_LIST*)CallbackData;
+       FltSetCallbackDataDirty(CallbackData);
+       lookasideEntry->Ciphertext = ciphertext;
+       lookasideEntry->AllocationType = allocationType;
+       lookasideEntry->VolumeContext = volumeContext;
+       lookasideEntry->StreamContext = streamContext;
+       *CompletionContext = lookasideEntry;
+       return_status = FLT_PREOP_SUCCESS_WITH_CALLBACK;
+       goto FCPreWrite_cleanup_and_return;
+   }
+   goto FCPreWrite_set_allocation_failure_status;
+}
+```
+
+What we also see is the passing of the ciphertext, allocation type, and contexts to the post operation.
+
+# FcPostWrite
+
+`FCPostWrite` is significantly simpler than its pre-operation counterpart. Its only responsibility is cleanup and resource management after the write operation completes. The function unpacks all the data passed on to it from the pre-operation and simply invokes multiple cleanup calls.
+
+[`FcPostWrite`][fc-post-write-code]
+
+```c
+FLT_POSTOP_CALLBACK_STATUS
+FCPostWrite(
+   PFLT_CALLBACK_DATA CallbackData,
+   PCFLT_RELATED_OBJECTS RelatedObjects,
+   PCUSTOM_FC_WRITE_CONTEXT CompletionContext
+)
+{
+   FltReleaseContext(CompletionContext->VolumeContext);
+   FltReleaseContext(CompletionContext->StreamContext);
+
+   FCFreeShadowBuffer(
+       CompletionContext->StreamContext,
+       CompletionContext->Ciphertext,
+       CompletionContext->AllocationType
+   );
+
+   ExFreeToNPagedLookasideList(&gPre2PostIoContextList, CompletionContext);
+
+   return FLT_POSTOP_FINISHED_PROCESSING;
+}
+```
+
+---
+
+[part-four-link]: {% post_url 2025-10-17-part-four %}
+[fc-pre-write-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L2229
+[fc-post-write-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L1449
