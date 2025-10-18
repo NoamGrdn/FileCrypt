@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Part 1 - Preface and DriverEntry"
-date:   2025-10-17 15:40:07 +0300
+date:   2025-10-17 15:40:10 +0300
 categories: jekyll update
 author: Ron Gladish, Noam Gordon, Eran Yeruhamie
 tags: [reverse-engineering, windows, drivers, security, encryption, filecrypt, encryption-driver, minifilter, minifilter-drivers, encryption-drivers, tpm]
@@ -181,9 +181,10 @@ After initializing numerous global variables and performing a series of registry
 
 Before exploring the callbacks, we must first review the Instance Setup Callback - `FCInstanceSetup`. This function determines whether the driver would like to attach an instance of itself to a given volume.
 
+---
+<br/>
 [→ Continue to Part 2][part-two-link]
 
----
 
 [kernel-mode-driver-architecture-design-guide]: https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/
 [ghidra]: https://github.com/NationalSecurityAgency/ghidra

@@ -1,0 +1,204 @@
+---
+layout: post
+title:  "Part 4 - IRP_MJ_READ"
+date:   2025-10-17 15:31:07 +0300
+categories: jekyll update
+---
+
+[← Go back to part 3][part-three-link]
+
+[Go to the FCPreRead callback](#fcpreread)
+
+[Go to the FCPostRead callback](#fcpostread)
+
+The read callbacks are where FileCrypt performs its decryption functionality, but only on mobile systems. Remember from earlier, on non-mobile systems, the driver only registers create callbacks. When applications read data from encrypted files on mobile devices, these functions transparently intercept and decrypt the data before it reaches the application.
+
+# FCPreRead
+
+The` IRP_MJ_READ` operation intercepts file reads before they reach the file system. FCPreRead's primary function is to determine whether the file being read requires decryption and, if so, to establish the necessary context for the post-operation callback.
+The function follows a familiar pattern we've seen in other callbacks - it first retrieves the stream context to check if the file is encrypted:
+
+[`FCPreRead`][fc-pre-read-code]
+
+```c
+FCPreRead(
+   PFLT_CALLBACK_DATA CallbackData,
+   PCFLT_RELATED_OBJECTS FltObjects,
+   PVOID* CompletionContext
+)
+...
+ULONG readLength = (CallbackData->Iopb->Parameters).Read.Length;
+...
+
+status = FltGetStreamContext(FltObjects->Instance, FltObjects->FileObject, streamContext);
+
+if (
+   status < 0 ||
+   (
+       FltObjects->FileObject != NULL &&
+       (FltObjects->FileObject->Flags & FO_BYPASS_IO_ENABLED) != 0 ||
+       readLength == 0
+   )
+)
+{
+   return_status = FLT_PREOP_SUCCESS_NO_CALLBACK;
+   goto FCPreRead_cleanup_and_return;
+}
+```
+
+`FCPreRead` doesn't modify the I/O operation itself. Instead, it sets up all the necessary data to be used later in the post-operation for the actual decryption. After confirming that
+
+[`FCPreRead`][fc-pre-read-code]
+
+```c
+lookasideListEntry = ExAllocateFromNPagedLookasideList(&gPre2PostIoContextList);
+
+...
+
+status = FltSetFsZeroingOffsetRequired(CallbackData);
+if (-1 < status)
+{
+   eventParam = CallbackData;
+
+
+   FltSetCallbackDataDirty(CallbackData);
+
+
+   lookasideListEntry->VolumeContext = volumeContext;
+   lookasideListEntry->StreamContext = streamContext;
+   *CompletionContext = lookasideListEntry;
+
+   return_status = FLT_PREOP_SUCCESS_WITH_CALLBACK;
+
+   goto FCPreRead_cleanup_and_return;
+}
+```
+
+decryption is needed, a completion context of type [`CUSTOM_FC_READ_CONTEXT`][custom_fc_read-context] is saved on a newly allocated lookaside list and passed on to the post-operation. An interesting security feature to notice in the code above is the call to `FltSetFsZeroingOffsetRequired`. This routine sets a flag that ensures any padding beyond the actual file content is zeroed out during the read operation, preventing potential data leakage from previous file contents that may still exist in unallocated disk sectors.
+
+# FCPostRead
+
+`FCPostRead` is where the decryption happens. The function first checks if an immediate decryption is possible, or whether it needs to be relegated to a work item from a nonpaged pool:
+
+[`FCPostRead`][fc-post-read-code]
+
+```c
+FLT_POSTOP_CALLBACK_STATUS
+FCPostRead(
+   PFLT_CALLBACK_DATA CallbackData,
+   PCFLT_RELATED_OBJECTS FltObjects,
+   PCUSTOM_FC_READ_CONTEXT CompletionContext,
+   FLT_POST_OPERATION_FLAGS Flags
+)
+{
+...
+   KIRQL currentIrql;
+   PFLT_GENERIC_WORKITEM fltWorkItem = NULL;
+   PCUSTOM_FC_DECRYPT_PARAMS fcDecryptParams = NULL;
+   PCUSTOM_FC_DECRYPT_PARAMS contexts = CompletionContext;
+...
+
+if (
+   currentIrql < DISPATCH_LEVEL ||
+   CallbackData->IoStatus.Information < 0x20001 &&
+   (
+       CallbackData->Iopb->Parameters.Others.Argument5 != NULL ||
+       (CallbackData->Flags & FLTFL_CALLBACK_DATA_SYSTEM_BUFFER) != 0
+   )
+)
+{
+   ...
+   FCDecryptWorker(NULL, FltObjects->Instance, contexts);
+   ...
+}
+else
+{
+   fltWorkItem = FltAllocateGenericWorkItem();
+   if (fltWorkItem != NULL)
+   {
+      ...
+      ioStatus = FltQueueGenericWorkItem(
+          fltWorkItem,
+          FltObjects->Instance,
+          FCDecryptWorker,
+          DelayedWorkQueue,
+          fcDecryptParams
+      );
+      ...
+   }
+}
+```
+
+The driver is looking for small read buffers that it can decrypt immediately; moreover, the `FLTFL_CALLBACK_DATA_SYSTEM_BUFFER` flag indicates that the buffer is from a non-paged pool and has already been locked down for safe access. If not, it will relegate the decryption to a work item that it queues.
+
+We found the 131,073-byte threshold somewhat interesting - it's exactly 128 KB + 1 byte, suggesting that Microsoft identified this as an optimal balance point between immediate processing and system responsiveness.
+
+For asynchronous processing, the function allocates a work item and queues it for later execution, returning `FLT_POSTOP_MORE_PROCCESSING_REQUIRED` to inform the filter manager that processing will be completed later.
+
+Whether called synchronously or asynchronously, `FCDecryptWorker` is called (directly or indirectly). The function first ensures it has access to the encrypted buffer. If no MDL is available, it attempts to lock the user buffer.
+
+[`FCDecryptWorker`][fc-decrypt-worker-code]
+
+```c
+VOID
+FCDecryptWorker(
+   PFLT_GENERIC_WORKITEM WorkItem,
+   PFLT_INSTANCE Instance,
+   CUSTOM_FC_DECRYPT_PARAMS* Params
+)
+{
+   NTSTATUS status;
+   PVOID ppvVar4;
+   ULONG zeroingOffset = 0;
+   PCUSTOM_FC_READ_CONTEXT completionContext = Params->CompletionContext;
+   PFLT_CALLBACK_DATA callbackData = Params->CallbackData;
+   PFLT_IO_PARAMETER_BLOCK iopb = callbackData->Iopb;
+   PMDL mdlAddress = (iopb->Parameters).Read.MdlAddress;
+   ULONG sectorSize;
+   PEVENT_DESCRIPTOR eventDescriptor;
+   PVOID event;
+   PFLT_CALLBACK_DATA event2;
+   PVOID event3 = &Params->CallbackData;
+
+   if (mdlAddress == NULL)
+   {
+       if ((callbackData->Flags & FLTFL_CALLBACK_DATA_SYSTEM_BUFFER) == 0)
+       {
+           event2 = callbackData;
+           status = FltLockUserBuffer(callbackData);
+
+           if (status < 0)
+           {
+               if ((Microsoft_Windows_FileCryptEnableBits & 1) != 0)
+               {
+                   McTemplateK0d_EtwWriteTransfer(event2, &LockUserBufferFailure, event3, status);
+               }
+               goto FCDecryptWorker_cleanup_and_return;
+           }
+
+           mdlAddress = (iopb->Parameters).Read.MdlAddress;
+           goto LAB_1c0002288;
+       }
+...
+```
+
+The actual decryption happens in `FCpEncDecrypt`, which processes the data in sector-sized chunks using the AES-CBC algorithm and the file's chamber-specific encryption key. The zeroing offset ensures that any padding beyond the actual file content gets properly zeroed for security.
+
+Its first critical task involves ensuring access to a usable virtual address for the encrypted data buffer. When no MDL (Memory Descriptor List) is initially available, `FCDecryptWorker` distinguishes between system and user buffers by checking the `FLTFL_CALLBACK_DATA_SYSTEM_BUFFER` flag.
+
+For user buffers, it calls `FltLockUserBuffer` to create an MDL that maps the user-space buffer into kernel-addressable memory. This operation can fail if the buffer cannot be locked, triggering ETW event logging and causing the function to terminate early. Kernel buffers are already mapped with an MDL to kernel-addressable memory, so we don't need to perform another action for them.
+
+Once an MDL exists, the function must obtain a virtual address for the physical memory pages. It examines the MDL flags to determine if the memory is already mapped or originates from the non-paged pool.
+
+If neither the `MDL_MAPPED_TO_SYSTEM_VA` nor `MDL_SOURCE_IS_NONPAGED_POOL` flags are set, it calls `MmMapLockedPagesSpecifyCache` to establish a system virtual address mapping using cached memory with a default MDL protection, plus additional flags. For already-mapped memory, it simply uses the existing `MappedSystemVa` pointer.
+
+Finally, `FCpEncDecrypt` is simply a wrapper function for the `BCryptDecrypt` function, which is part of the `bcrypt.h`. `FCpEncDecrypt`, which receives the volume's BCrypt algorithm handle and the stream's key data, calls `BCryptDecrypt` once per sector to decrypt each sector individually. The size of the buffer to decrypt is the sector size rounded up to the next sector.
+
+---
+
+
+[part-three-link]: {% post_url 2025-10-17-part-three %}
+[fc-pre-read-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L2009
+[custom_fc_read-context]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#custom_fc_read_context
+[fc-post-read-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L1325
+[fc-decrypt-worker-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L57

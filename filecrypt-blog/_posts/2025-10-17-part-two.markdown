@@ -1,9 +1,11 @@
 ---
 layout: post
 title:  "Part 2 - Instance Setup"
-date:   2025-10-17 15:40:06 +0300
+date:   2025-10-17 15:40:09 +0300
 categories: jekyll update
 ---
+
+[← Go back to part 1][part-one-link]
 
 # FCInstanceSetup
 
@@ -243,10 +245,12 @@ if ((gFCFlags & BypassAccessChecksFlagBit) != 0)
 
 In the next part, we will delve into the largest callback of the driver by far, and the only one registered on non-mobile systems: `IRP_MJ_CREATE` - `FCPreCreate` and `FCPostCreate`.
 
+---
+<br/>
 [→ Continue to part 3][part-three-link]
 
----
 
+[part-one-link]: {% post_url 2025-10-17-part-one %}
 [fc-instance-setup-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L247
 [removable-blog-post]: https://bugs.freedesktop.org/show_bug.cgi?id=22879#c3
 [custom_fc_volume_context]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#custom_fc_volume_context

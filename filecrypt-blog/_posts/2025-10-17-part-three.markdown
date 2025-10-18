@@ -1,9 +1,11 @@
 ---
 layout: post
 title:  "Part 3 - IRP_MJ_CREATE"
-date:   2025-10-17 15:40:05 +0300
+date:   2025-10-17 15:40:08 +0300
 categories: jekyll update
 ---
+
+[← Go back to part 2][part-two-link]
 
 [Go to the FCPreCreate callback](#fcprecreate)
 
@@ -838,7 +840,10 @@ return_status = BCryptGenerateSymmetricKey(
 After successfully generating and deriving about 400 keys, the driver sets the newly created stream context in place by calling `FltSetStreamContext`, which ultimately ends the create operation.
 
 ---
+<br/>
+[→ Continue to Part 4][part-four-link]
 
+[part-two-link]: {% post_url 2025-10-17-part-two %}
 [altitudes-for-minifilter-drivers]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/load-order-groups-and-altitudes-for-minifilter-drivers
 [fc-pre-create-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L1483
 [fcp-obtain-security-info-callout-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L1076
@@ -858,3 +863,4 @@ After successfully generating and deriving about 400 keys, the driver sets the n
 [trusted-platform-module-overview]: https://learn.microsoft.com/en-us/windows/security/hardware-security/tpm/trusted-platform-module-overview
 [registrymachinesoftwaremicrosoftsecuritymanagerstoragecardprofileschambers]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#registrymachinesoftwaremicrosoftsecuritymanagerstoragecardprofileschambers
 [custom_fc_stsec_cache_table_entry]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#custom_fc_stsec_cache_table_entry
+[part-four-link]: {% post_url 2025-10-17-part-four %}
