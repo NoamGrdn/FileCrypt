@@ -175,8 +175,14 @@ FCPostWrite(
 }
 ```
 
+![File structure]({{ '/assets/images/the-fancy-the.png' | relative_url }}) end
+
 ---
+
+<br/>
+[→ Continue to an epilogue][part-six-link]
 
 [part-four-link]: {% post_url 2025-10-17-part-four %}
 [fc-pre-write-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L2229
 [fc-post-write-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L1449
+[part-six-link]: {% post_url 2025-10-17-part-six %}
