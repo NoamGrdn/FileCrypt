@@ -4,6 +4,7 @@ title:  "Part 1 - Preface and DriverEntry"
 author: Ron Gladish, Noam Gordon, Eran Yeruhamie
 date:   2025-10-17 15:40:10 +0300
 tags: [reverse-engineering, windows, drivers, security, encryption, filecrypt, encryption-driver, minifilter, minifilter-drivers, encryption-drivers, driverentry, ghidra, cyberchef, windows-security, FsRtlIsMobileOS, ktm]
+permalink: /part-one
 ---
 
 # Preface
@@ -202,4 +203,4 @@ Before exploring the callbacks, we must first review the Instance Setup Callback
 [custom_fc_stsec_cache_table_entry]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#custom_fc_stsec_cache_table_entry
 [custom_fc_stsec_sec_desc_cache_list_entry]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#custom_fc_stsec_sec_desc_cache_list_entry
 [custom_fc_stsec_folder_prop_cache_list_entry]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#custom_fc_stsec_folder_prop_cache_list_entry
-[part-two-link]: {% post_url 2025-10-17-part-two %}
+[part-two-link]: {{ site.baseurl }}{% link _posts/2025-10-17-part-two.markdown %}

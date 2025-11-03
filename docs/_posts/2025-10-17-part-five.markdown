@@ -4,6 +4,7 @@ title:  "Part 5 - IRP_MJ_WRITE"
 author: Ron Gladish, Noam Gordon, Eran Yeruhamie
 date:   2025-10-17 15:31:06 +0300
 tags: [reverse-engineering, windows, drivers, security, encryption, filecrypt, encryption-driver, minifilter, minifilter-drivers, encryption-drivers, windows-security, FsRtlIsMobileOS, IRP_MJ_WRITE, pre-write, post-write, chambers]
+permalink: /part-five
 ---
 
 [← Go back to part 4][part-four-link]
@@ -183,7 +184,7 @@ FCPostWrite(
 <br/>
 [→ Continue to the epilogue][part-six-link]
 
-[part-four-link]: {% post_url 2025-10-17-part-four %}
+[part-four-link]: {{ site.baseurl }}{% link _posts/2025-10-17-part-four.markdown %}
 [fc-pre-write-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L2229
 [fc-post-write-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L1449
-[part-six-link]: {% post_url 2025-10-17-part-six %}
+[part-six-link]: {{ site.baseurl }}{% link _posts/2025-10-17-part-six.markdown %}

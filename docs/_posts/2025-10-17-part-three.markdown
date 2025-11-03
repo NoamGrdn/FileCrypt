@@ -4,6 +4,7 @@ title:  "Part 3 - IRP_MJ_CREATE"
 author: Ron Gladish, Noam Gordon, Eran Yeruhamie
 date:   2025-10-17 15:40:08 +0300
 tags: [reverse-engineering, windows, drivers, security, encryption, filecrypt, encryption-driver, minifilter, minifilter-drivers, encryption-drivers, windows-security, FsRtlIsMobileOS, IRP_MJ_CREATE, pre-create, post-create, windows-security-descriptors, chambers, SID]
+permalink: /part-three
 ---
 
 [← Go back to part 2][part-two-link]
@@ -844,7 +845,7 @@ After successfully generating and deriving about 400 keys, the driver sets the n
 <br/>
 [→ Continue to Part 4][part-four-link]
 
-[part-two-link]: {% post_url 2025-10-17-part-two %}
+[part-two-link]: {{ site.baseurl }}{% link _posts/2025-10-17-part-two.markdown %}
 [altitudes-for-minifilter-drivers]: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/load-order-groups-and-altitudes-for-minifilter-drivers
 [fc-pre-create-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L1483
 [fcp-obtain-security-info-callout-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L1076
@@ -864,4 +865,4 @@ After successfully generating and deriving about 400 keys, the driver sets the n
 [trusted-platform-module-overview]: https://learn.microsoft.com/en-us/windows/security/hardware-security/tpm/trusted-platform-module-overview
 [registrymachinesoftwaremicrosoftsecuritymanagerstoragecardprofileschambers]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#registrymachinesoftwaremicrosoftsecuritymanagerstoragecardprofileschambers
 [custom_fc_stsec_cache_table_entry]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#custom_fc_stsec_cache_table_entry
-[part-four-link]: {% post_url 2025-10-17-part-four %}
+[part-four-link]: {{ site.baseurl }}{% link _posts/2025-10-17-part-four.markdown %}

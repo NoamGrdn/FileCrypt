@@ -4,6 +4,7 @@ title:  "Part 4 - IRP_MJ_READ"
 author: Ron Gladish, Noam Gordon, Eran Yeruhamie
 date:   2025-10-17 15:31:07 +0300
 tags: [reverse-engineering, windows, drivers, security, encryption, filecrypt, encryption-driver, minifilter, minifilter-drivers, encryption-drivers, windows-security, FsRtlIsMobileOS, IRP_MJ_READ, pre-read, post-read, FltSetFsZeroingOffsetRequired, chambers]
+permalink: /part-four
 ---
 
 [← Go back to part 3][part-three-link]
@@ -200,9 +201,9 @@ Finally, `FCpEncDecrypt` is simply a wrapper function for the `BCryptDecrypt` fu
 [→ Continue to part 5][part-five-link]
 
 
-[part-three-link]: {% post_url 2025-10-17-part-three %}
+[part-three-link]: {{ site.baseurl }}{% link _posts/2025-10-17-part-three.markdown %}
 [fc-pre-read-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L2009
 [custom_fc_read-context]: https://github.com/NoamGrdn/FileCrypt/blob/master/Technical%20Overview.md#custom_fc_read_context
 [fc-post-read-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L1325
 [fc-decrypt-worker-code]: https://github.com/NoamGrdn/FileCrypt/blob/master/FileCrypt%20Reimagined/filecrypt/filter/fc.c#L57
-[part-five-link]: {% post_url 2025-10-17-part-five %}
+[part-five-link]: {{ site.baseurl }}{% link _posts/2025-10-17-part-five.markdown %}
