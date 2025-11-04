@@ -7,4 +7,4 @@ This project includes:
 3. A funky [web app](https://github.com/NoamGrdn/FileCrypt/tree/master/Interactive%20Visualization) that visualizes the functionality of the driver.
 5. An export file of the Ghidra project (The Ghidra version used in this project can be found in the technical overview).
 
-Head over to [https://noamgrdn.github.io/FileCrypt/][https://noamgrdn.github.io/FileCrypt/] to read the full blog post.
+**Head over to [https://noamgrdn.github.io/FileCrypt/](https://noamgrdn.github.io/FileCrypt/) to read the full blog post.**
